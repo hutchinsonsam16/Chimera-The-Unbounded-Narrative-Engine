@@ -15,10 +15,12 @@ import { ApiKeyModal } from './components/onboarding/ApiKeyModal';
 import { Spinner } from './components/ui/Spinner';
 
 const ThemeManager: React.FC = () => {
+  // FIX: Correctly finds the active theme from the themes array to prevent crashes.
   const { themes, activeThemeName } = useStore((state) => state.settings);
   const theme = themes.find(t => t.name === activeThemeName);
 
   useEffect(() => {
+    // Guard clause to ensure the theme exists before trying to use it.
     if (!theme) return;
 
     const root = document.documentElement;
@@ -31,18 +33,13 @@ const ThemeManager: React.FC = () => {
 
     if (theme.backgroundImage) {
       document.body.style.backgroundImage = `url(${theme.backgroundImage})`;
-      document.body.style.backgroundSize = 'cover';
-      document.body.style.backgroundPosition = 'center';
-      document.body.style.backgroundAttachment = 'fixed';
     } else {
       document.body.style.backgroundImage = 'none';
     }
     
     const createFontLink = (fontFamily: string, id: string) => {
         const existingLink = document.getElementById(id);
-        if (existingLink) {
-            existingLink.remove();
-        }
+        if (existingLink) existingLink.remove();
         if (fontFamily !== 'Inter, sans-serif' && fontFamily !== 'Orbitron, sans-serif') {
             const link = document.createElement('link');
             link.id = id;
@@ -63,16 +60,29 @@ const ThemeManager: React.FC = () => {
 };
 
 const AppContent: React.FC = () => {
-  const gamePhase = useStore(state => state.gameState.phase);
-  const isSettingsOpen = useStore(state => state.isSettingsOpen);
-  const isDiceRollerOpen = useStore(state => state.isDiceRollerOpen);
-  const isAudioPlayerOpen = useStore(state => state.isAudioPlayerOpen);
-  const toggleSettings = useStore(state => state.toggleSettings);
-  const isCommandPaletteOpen = useStore(state => state.isCommandPaletteOpen);
-  const healthStatus = useStore(state => state.character.status.Health);
-  const isExportModalOpen = useStore(state => state.isExportModalOpen);
-  const isImageEditorOpen = useStore(state => state.isImageEditorOpen);
-  const hasCompletedTutorial = useStore(state => state.settings.hasCompletedTutorial);
+  const {
+    gamePhase,
+    isSettingsOpen,
+    isDiceRollerOpen,
+    isAudioPlayerOpen,
+    toggleSettings,
+    isCommandPaletteOpen,
+    isExportModalOpen,
+    isImageEditorOpen,
+    hasCompletedTutorial,
+    healthStatus
+  } = useStore(state => ({
+    gamePhase: state.gameState.phase,
+    isSettingsOpen: state.isSettingsOpen,
+    isDiceRollerOpen: state.isDiceRollerOpen,
+    isAudioPlayerOpen: state.isAudioPlayerOpen,
+    toggleSettings: state.toggleSettings,
+    isCommandPaletteOpen: state.isCommandPaletteOpen,
+    isExportModalOpen: state.isExportModalOpen,
+    isImageEditorOpen: state.isImageEditorOpen,
+    hasCompletedTutorial: state.settings.hasCompletedTutorial,
+    healthStatus: state.character.status.Health,
+  }));
 
   const isWounded = healthStatus?.toLowerCase().includes('wounded') || healthStatus?.toLowerCase().includes('injured');
   const showTutorial = gamePhase === GamePhase.PLAYING && !hasCompletedTutorial;
@@ -111,7 +121,8 @@ const App: React.FC = () => {
       toggleCommandPalette: state.toggleCommandPalette,
   }));
 
-  // This hook now has an empty dependency array to ensure it ONLY runs once.
+  // This hook now has an empty dependency array.
+  // It will run ONLY ONCE when the application first loads. This is the fix for the infinite loop.
   useEffect(() => {
     validateApiKey();
 
@@ -126,7 +137,7 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []); // <-- The empty array is the critical fix.
+  }, []); // <-- EMPTY DEPENDENCY ARRAY FIX
 
   const renderContent = () => {
     switch (apiKeyStatus) {
