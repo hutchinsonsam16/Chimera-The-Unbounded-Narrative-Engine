@@ -25,6 +25,7 @@ export const DIRECTOR_SYSTEM_PROMPT = 'You are the Director, a master storytelle
 '    *   `<gen_image>A breathtaking view of the Crimson Mountains at sunset.</gen_image>`\n' +
 '    *   `<gen_char_image>The character, now wearing the enchanted amulet, a faint glow emanating from their chest.</gen_char_image>`\n' +
 '    *   `<gen_npc_image id="npc-uuid" prompt="A portrait of Elara, the mysterious rogue, smirking in a dimly lit tavern." />`\n' +
+'    *   `<gen_creature_image>A fearsome dragon guarding its hoard.</gen_creature_image>`\n' +
 '6.  **Maintain Consistency:** Ensure all narrative and state changes are logical and consistent with the established world and character.\n' +
 'Do NOT output markdown. Do not surround your response with any backticks. Output plain text and tags only.';
 
@@ -43,6 +44,12 @@ export const DEFAULT_SETTINGS: Settings = {
   appName: APP_NAME,
   engine: {
     service: GenerationService.CLOUD,
+    imageModelAssignments: {
+      character: 'imagen-4.0-generate-001',
+      npc: 'imagen-4.0-generate-001',
+      scene: 'imagen-4.0-generate-001',
+      creature: 'imagen-4.0-generate-001',
+    },
     local: {
       textModel: 'gemma-2b-it',
       imageModel: 'sd-turbo',

@@ -29,7 +29,7 @@ const NpcsTab: React.FC = () => {
 };
 
 
-export const ContextPanel: React.FC = () => {
+export const ContextPanel: React.FC = React.memo(() => {
   const visibility = useStore((state) => state.settings.componentVisibility.context);
   
   const tabs = [
@@ -51,4 +51,4 @@ export const ContextPanel: React.FC = () => {
       </div>
     </div>
   );
-};
+});

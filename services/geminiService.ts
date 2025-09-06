@@ -52,8 +52,8 @@ export async function generateEnhancedPrompt(prompt: string): Promise<string> {
     }
 }
 
-export const generateImage = async (prompt: string): Promise<string> => {
-  const modelName = useStore.getState().settings.engine.cloud.imageModel;
+export const generateImage = async (prompt: string, modelNameOverride?: string): Promise<string> => {
+  const modelName = modelNameOverride || useStore.getState().settings.engine.cloud.imageModel;
   
   try {
     const response = await ai.models.generateImages({

@@ -95,7 +95,7 @@ export const NarrativePanel: React.FC = () => {
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [storyLog[storyLog.length - 1]?.id, storyLog[storyLog.length - 1]?.content.length]);
+  }, [storyLog[storyLog.length - 1]?.id]);
 
   const handleSubmit = () => {
     if (playerInput.trim() && !isLoading) {

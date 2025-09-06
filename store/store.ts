@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
 import { temporal } from 'zundo';
-import { AppState, GamePhase, NPC, PanelType, Settings, StoryLogEntry, GameData, Toast, Quest, KnowledgeBaseEntry, Snapshot, Persona, ExportFormat } from '../types';
+import { AppState, GamePhase, NPC, PanelType, Settings, StoryLogEntry, GameData, Toast, Quest, KnowledgeBaseEntry, Snapshot, Persona, ExportFormat, ImageGenerationContext } from '../types';
 import { INITIAL_STATE, INITIAL_GAME_DATA } from '../constants';
 import { generateTextStream, generateImage, generateEnhancedPrompt, suggestActionFromContext, editImageWithMask, generateOnboardingFromImage } from '../services/geminiService';
 import { generateLocalText, generateLocalImage } from '../services/localGenerationService';
@@ -42,7 +42,6 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
     clear();
   },
 
-  // FIX: Added explicit types to parameters to align with the updated AppState interface.
   startGame: async (worldConcept: string, charName: string, charBackstory: string, openingPrompt: string, charImageBase64?: string | null) => {
     let initialImageUrl = `https://picsum.photos/seed/char/512/512`;
     let initialHistory: { url: string; prompt: string }[] = [];
@@ -124,19 +123,37 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
         const stream = await generateTextStream(fullPrompt);
         const narrativeEntryId = nanoid();
         
-        // Add a placeholder for the streaming response
         set(state => ({ gameState: { ...state.gameState, storyLog: [...state.gameState.storyLog, { id: narrativeEntryId, type: 'narrative', content: '', timestamp: new Date().toISOString() }] }}));
         
         let fullResponse = "";
-        for await (const chunk of stream) {
-          fullResponse += chunk;
-          set(state => ({
-            gameState: {
-              ...state.gameState,
-              storyLog: state.gameState.storyLog.map(e => e.id === narrativeEntryId ? { ...e, content: fullResponse } : e)
+        let accumulatedChunk = "";
+        let lastUpdateTime = 0;
+        const updateInterval = 150; // ms
+
+        const updateState = () => {
+            if (accumulatedChunk.length > 0) {
+                fullResponse += accumulatedChunk;
+                const currentFullResponse = fullResponse; // Capture current state for closure
+                set(state => ({
+                    gameState: {
+                        ...state.gameState,
+                        storyLog: state.gameState.storyLog.map(e => e.id === narrativeEntryId ? { ...e, content: currentFullResponse } : e)
+                    }
+                }));
+                accumulatedChunk = "";
+                lastUpdateTime = Date.now();
             }
-          }));
+        };
+
+        for await (const chunk of stream) {
+          accumulatedChunk += chunk;
+          const now = Date.now();
+          if (now - lastUpdateTime > updateInterval) {
+            updateState();
+          }
         }
+        
+        updateState(); // Final update for any remaining text
         
         const cleanNarrative = await get().parseAndApplyTags(fullResponse);
         set(state => ({
@@ -204,8 +221,6 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
         case 'world_lore': set(state => ({ world: { ...state.world, lore: state.world.lore + '\n\n' + currentContent } })); break;
         case 'add_npc': try { const npc = JSON.parse(currentContent) as NPC; set(state => ({ world: { ...state.world, npcs: [...state.world.npcs, npc] } })); } catch (e) { console.error('Failed to parse NPC JSON:', currentContent); } break;
         case 'update_npc': if (attributes.id) try { const updates = JSON.parse(currentContent); set(state => ({ world: { ...state.world, npcs: state.world.npcs.map(npc => npc.id === attributes.id ? { ...npc, ...updates } : npc) } })); } catch (e) { console.error('Failed to parse NPC update JSON:', currentContent); } break;
-        
-        // New V2 Tags
         case 'quest_add': if(attributes.title) { const newQuest: Quest = { id: nanoid(), title: attributes.title, status: 'active'}; set(state => ({ gameState: { ...state.gameState, quests: [...state.gameState.quests, newQuest] }})); } break;
         case 'quest_update': if(attributes.id && attributes.status) { set(state => ({ gameState: { ...state.gameState, quests: state.gameState.quests.map(q => q.id === attributes.id ? {...q, status: attributes.status as Quest['status']} : q)}})); } break;
         case 'quest_remove': if(attributes.id) { set(state => ({ gameState: { ...state.gameState, quests: state.gameState.quests.filter(q => q.id !== attributes.id) }}));} break;
@@ -223,27 +238,28 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
                 } catch (e) { console.error("Failed to parse kb_entry fields JSON:", attributes.fields); }
             }
             break;
+        
         case 'gen_npc_image':
-            if (attributes.id && attributes.prompt) {
-                const { id: npcId, prompt: npcPrompt } = attributes;
-                const promise = (async () => {
-                    const cost = get().settings.gameplay.costs.imageGeneration;
-                    if (get().credits < cost) return;
-                    try {
-                        const b64Image = await generateImage(npcPrompt);
-                        const imageUrl = `data:image/jpeg;base64,${b64Image}`;
-                        set(state => ({ world: { ...state.world, npcs: state.world.npcs.map(npc => npc.id === npcId ? { ...npc, imageUrl, imageUrlHistory: [...(npc.imageUrlHistory || []), { url: imageUrl, prompt: npcPrompt }] } : npc ) }, credits: state.credits - cost }));
-                    } catch (e) { console.error(`Failed to generate image for NPC ${npcId}:`, e); get().addToast(`Image generation failed for NPC.`, 'error'); }
-                })();
-                imagePromises.push(promise);
-            }
-            break;
-        case 'gen_image': case 'gen_char_image':
+        case 'gen_creature_image':
+        case 'gen_image':
+        case 'gen_char_image': {
             const isCharImage = currentTagName === 'gen_char_image';
-            const imagePrompt = currentContent;
+            let context: ImageGenerationContext = 'scene';
+            if (isCharImage) context = 'character';
+            if (currentTagName === 'gen_npc_image') context = 'npc';
+            if (currentTagName === 'gen_creature_image') context = 'creature';
+
+            const imagePrompt = currentTagName === 'gen_npc_image' ? attributes.prompt || currentContent : currentContent;
+            const npcId = currentTagName === 'gen_npc_image' ? attributes.id : null;
+            
+            if (!imagePrompt) break;
+
             const placeholderId = nanoid();
-            const placeholderEntry: StoryLogEntry = { id: placeholderId, type: 'image', content: 'generating...', prompt: imagePrompt, timestamp: new Date().toISOString() };
-            if (!isCharImage) { set(state => ({ gameState: { ...state.gameState, storyLog: [...state.gameState.storyLog, placeholderEntry] }})); }
+            if (!isCharImage) { 
+              const placeholderEntry: StoryLogEntry = { id: placeholderId, type: 'image', content: 'generating...', prompt: imagePrompt, timestamp: new Date().toISOString() };
+              set(state => ({ gameState: { ...state.gameState, storyLog: [...state.gameState.storyLog, placeholderEntry] }})); 
+            }
+
             const promise = (async () => {
                 const cost = get().settings.gameplay.costs.imageGeneration;
                 if (get().credits < cost) {
@@ -253,11 +269,25 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
                 }
 
                 try {
-                    const { service } = get().settings.engine;
-                    const b64Image = service === 'cloud' ? await generateImage(imagePrompt) : await generateLocalImage(imagePrompt);
+                    const { settings } = get();
+                    const imageModel = settings.engine.imageModelAssignments[context];
+                    const isLocalModel = !imageModel.includes('imagen');
+                    
+                    const b64Image = isLocalModel 
+                        ? await generateLocalImage(imagePrompt, imageModel) 
+                        : await generateImage(imagePrompt, imageModel);
+
                     const imageUrl = `data:image/jpeg;base64,${b64Image}`;
-                    if (isCharImage) { set(state => ({ character: { ...state.character, imageUrl, imageUrlHistory: [...state.character.imageUrlHistory, { url: imageUrl, prompt: imagePrompt }] }})); } 
-                    else { set(state => ({ gameState: { ...state.gameState, storyLog: state.gameState.storyLog.map(e => e.id === placeholderId ? { ...e, content: imageUrl } : e) }})); }
+                    
+                    if (isCharImage) { 
+                        set(state => ({ character: { ...state.character, imageUrl, imageUrlHistory: [...state.character.imageUrlHistory, { url: imageUrl, prompt: imagePrompt }] }})); 
+                    } else if (npcId) {
+                        set(state => ({ world: { ...state.world, npcs: state.world.npcs.map(npc => npc.id === npcId ? { ...npc, imageUrl, imageUrlHistory: [...(npc.imageUrlHistory || []), { url: imageUrl, prompt: imagePrompt }] } : npc ) }}));
+                        // We generated the NPC image, now update the placeholder log entry
+                        set(state => ({ gameState: { ...state.gameState, storyLog: state.gameState.storyLog.map(e => e.id === placeholderId ? { ...e, content: imageUrl } : e) }}));
+                    } else { 
+                        set(state => ({ gameState: { ...state.gameState, storyLog: state.gameState.storyLog.map(e => e.id === placeholderId ? { ...e, content: imageUrl } : e) }})); 
+                    }
                     set(state => ({ credits: state.credits - cost }));
                 } catch (e) {
                     console.error("Image generation failed:", e);
@@ -268,6 +298,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
             })();
             imagePromises.push(promise);
             break;
+          }
         }
     }
     await Promise.all(imagePromises);
@@ -321,10 +352,12 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
         const { character, settings } = get();
         const autoPrompt = `Full body portrait of ${character.name}, a character whose status is ${JSON.stringify(character.status)}. They are carrying: ${character.inventory.join(', ')}.`;
         
-        const { service } = settings.engine;
-        const b64Image = service === 'cloud' 
-            ? await generateImage(autoPrompt) 
-            : await generateLocalImage(autoPrompt);
+        const imageModel = settings.engine.imageModelAssignments['character'];
+        const isLocalModel = !imageModel.includes('imagen');
+        
+        const b64Image = isLocalModel 
+            ? await generateLocalImage(autoPrompt, imageModel) 
+            : await generateImage(autoPrompt, imageModel);
 
         const imageUrl = `data:image/jpeg;base64,${b64Image}`;
         set(state => ({ 
@@ -366,7 +399,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
     }
   },
 
-  editImage: async (logEntryId, prompt, mode, maskDataUrl) => {
+  editImage: async (logEntryId, prompt, mode, maskDataUrl, imageOverrideBase64) => {
     const cost = get().settings.gameplay.costs.imageEdit;
     if (get().credits < cost) {
         get().addToast(`Not enough credits for image edit. Need ${cost}.`, 'error');
@@ -380,10 +413,10 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
     }
     set(state => ({ gameState: { ...state.gameState, isLoading: true }}));
     try {
-        const originalImageBase64 = originalEntry.content.split(',')[1];
+        const imageToSendBase64 = imageOverrideBase64 || originalEntry.content.split(',')[1];
         const maskBase64 = maskDataUrl ? maskDataUrl.split(',')[1] : undefined;
 
-        const { image: newImageBase64, text: newText } = await editImageWithMask(prompt, originalImageBase64, maskBase64);
+        const { image: newImageBase64, text: newText } = await editImageWithMask(prompt, imageToSendBase64, maskBase64);
         
         const newImageUrl = `data:image/jpeg;base64,${newImageBase64}`;
         const newLogEntry: StoryLogEntry = {
@@ -653,7 +686,6 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
 });
 
 
-// FIX: Removed explicit StateCreator type to allow for type inference of middleware-augmented state.
 export const createRootSlice = temporal(historySlice, {
     partialize: (state) => {
         const { character, world, gameState } = state;

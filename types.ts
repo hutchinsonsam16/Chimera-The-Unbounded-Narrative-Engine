@@ -96,10 +96,13 @@ export interface Persona {
     prompt: string;
 }
 
+export type ImageGenerationContext = 'character' | 'npc' | 'scene' | 'creature';
+
 export interface Settings {
   appName: string;
   engine: {
     service: GenerationService;
+    imageModelAssignments: Record<ImageGenerationContext, string>;
     local: {
       textModel: string;
       imageModel: string;
@@ -185,7 +188,6 @@ export interface AppState extends GameData {
   // Actions
   handlePlayerAction: (action: string) => Promise<void>;
   parseAndApplyTags: (rawResponse: string) => Promise<string>;
-  // FIX: Added optional `charImageBase64` parameter to match the implementation, fixing a type error.
   startGame: (worldConcept: string, charName: string, charBackstory: string, openingPrompt: string, charImageBase64?: string | null) => void;
   saveGame: () => void;
   loadGame: (file: File) => void;
@@ -210,7 +212,7 @@ export interface AppState extends GameData {
 
   // V3 Actions
   suggestPlayerAction: () => Promise<string[]>;
-  editImage: (logEntryId: string, prompt: string, mode: 'in-paint' | 'out-paint', maskDataUrl?: string) => Promise<void>;
+  editImage: (logEntryId: string, prompt: string, mode: 'in-paint' | 'out-paint', maskDataUrl?: string, imageOverrideBase64?: string) => Promise<void>;
   
   // Persona Actions
   addPersona: (persona: Omit<Persona, 'id'>) => void;

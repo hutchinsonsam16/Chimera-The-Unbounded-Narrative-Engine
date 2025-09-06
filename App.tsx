@@ -63,24 +63,17 @@ const ThemeManager: React.FC = () => {
 };
 
 const App: React.FC = () => {
-  const { 
-    gamePhase, isSettingsOpen, isDiceRollerOpen, 
-    isAudioPlayerOpen, toggleSettings, toggleCommandPalette, 
-    isCommandPaletteOpen, healthStatus, isExportModalOpen, 
-    isImageEditorOpen, hasCompletedTutorial 
-  } = useStore(state => ({
-    gamePhase: state.gameState.phase,
-    isSettingsOpen: state.isSettingsOpen,
-    isDiceRollerOpen: state.isDiceRollerOpen,
-    isAudioPlayerOpen: state.isAudioPlayerOpen,
-    toggleSettings: state.toggleSettings,
-    toggleCommandPalette: state.toggleCommandPalette,
-    isCommandPaletteOpen: state.isCommandPaletteOpen,
-    healthStatus: state.character.status.Health,
-    isExportModalOpen: state.isExportModalOpen,
-    isImageEditorOpen: state.isImageEditorOpen,
-    hasCompletedTutorial: state.settings.hasCompletedTutorial,
-  }));
+  const gamePhase = useStore(state => state.gameState.phase);
+  const isSettingsOpen = useStore(state => state.isSettingsOpen);
+  const isDiceRollerOpen = useStore(state => state.isDiceRollerOpen);
+  const isAudioPlayerOpen = useStore(state => state.isAudioPlayerOpen);
+  const toggleSettings = useStore(state => state.toggleSettings);
+  const toggleCommandPalette = useStore(state => state.toggleCommandPalette);
+  const isCommandPaletteOpen = useStore(state => state.isCommandPaletteOpen);
+  const healthStatus = useStore(state => state.character.status.Health);
+  const isExportModalOpen = useStore(state => state.isExportModalOpen);
+  const isImageEditorOpen = useStore(state => state.isImageEditorOpen);
+  const hasCompletedTutorial = useStore(state => state.settings.hasCompletedTutorial);
 
   const isWounded = healthStatus?.toLowerCase().includes('wounded') || healthStatus?.toLowerCase().includes('injured');
   const showTutorial = gamePhase === GamePhase.PLAYING && !hasCompletedTutorial;

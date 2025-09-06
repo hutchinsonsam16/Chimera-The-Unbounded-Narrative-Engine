@@ -23,7 +23,7 @@ const QuestList: React.FC<{ quests: Quest[], title: string }> = ({ quests, title
     </>
 );
 
-export const CharacterPanel: React.FC = () => {
+export const CharacterPanel: React.FC = React.memo(() => {
   const character = useStore((state) => state.character);
   const quests = useStore((state) => state.gameState.quests);
   const visibility = useStore((state) => state.settings.componentVisibility.character);
@@ -95,4 +95,4 @@ export const CharacterPanel: React.FC = () => {
       </div>
     </div>
   );
-};
+});

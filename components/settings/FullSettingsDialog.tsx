@@ -4,7 +4,7 @@ import { Dialog } from '../ui/Dialog';
 import { Tabs } from '../ui/Tabs';
 import { Button } from '../ui/Button';
 import { PanelOrderManager } from './PanelOrderManager';
-import { GenerationService, Theme, Persona } from '../../types';
+import { GenerationService, Theme, Persona, ImageGenerationContext } from '../../types';
 import { toBase64 } from '../../lib/utils';
 import { Input } from '../ui/Input';
 import { Textarea } from '../ui/Textarea';
@@ -78,6 +78,13 @@ const EngineSettings: React.FC = () => {
     const [modelUrl, setModelUrl] = useState('');
     const [downloadProgress, setDownloadProgress] = useState(0);
 
+    const availableImageModels = [
+        'imagen-4.0-generate-001',
+        'segmind/tiny-sd',
+        'stabilityai/stable-diffusion-2-1-base',
+        'SimianLuo/LCM_Dreamshaper_v7'
+    ];
+
     const handleServiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         setSettings({ ...settings, engine: { ...settings.engine, service: e.target.value as GenerationService }});
     };
@@ -95,6 +102,19 @@ const EngineSettings: React.FC = () => {
             });
         }, 200);
     }
+    
+    const handleAssignmentChange = (context: ImageGenerationContext, model: string) => {
+        setSettings({
+            ...settings,
+            engine: {
+                ...settings.engine,
+                imageModelAssignments: {
+                    ...settings.engine.imageModelAssignments,
+                    [context]: model,
+                },
+            },
+        });
+    };
 
     return (
         <div className="space-y-6 text-gray-300">
@@ -109,6 +129,25 @@ const EngineSettings: React.FC = () => {
                 </p>
             </div>
             
+             <div className="p-4 border border-gray-600 rounded-md">
+                <h4 className="font-semibold mb-2">Image Model Assignments</h4>
+                <p className="text-sm text-gray-400 mb-3">Assign a specific model for different creative contexts.</p>
+                <div className="grid grid-cols-2 gap-4">
+                    {(Object.keys(settings.engine.imageModelAssignments) as ImageGenerationContext[]).map(context => (
+                         <div key={context}>
+                            <label className="block text-sm font-medium capitalize">{context}</label>
+                            <select 
+                                value={settings.engine.imageModelAssignments[context]}
+                                onChange={(e) => handleAssignmentChange(context, e.target.value)}
+                                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-600 bg-gray-700 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm rounded-md text-white"
+                            >
+                                {availableImageModels.map(model => <option key={model} value={model}>{model}</option>)}
+                            </select>
+                         </div>
+                    ))}
+                </div>
+            </div>
+
             {settings.engine.service === 'local' && (
                 <div className="p-4 border border-gray-600 rounded-md">
                     <h4 className="font-semibold mb-2">Local Model Hub</h4>
@@ -272,7 +311,6 @@ const DangerZone: React.FC<{onClose: ()=>void}> = ({onClose}) => {
     );
 }
 
-// FIX: Added missing props interface for the component.
 interface FullSettingsDialogProps {
   onClose: () => void;
 }

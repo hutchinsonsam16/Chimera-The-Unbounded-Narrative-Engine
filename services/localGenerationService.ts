@@ -100,9 +100,9 @@ export const generateLocalText = async (prompt: string): Promise<string> => {
     return result[0].generated_text;
 };
 
-export const generateLocalImage = async (prompt: string): Promise<string> => {
+export const generateLocalImage = async (prompt: string, modelNameOverride?: string): Promise<string> => {
     // In a real app, this would get the model from settings.
-    const modelName = 'Xenova/TinySD';
+    const modelName = modelNameOverride || 'Xenova/TinySD';
     const generator = await localModelManager.getModel('text-to-image', modelName);
     const result = await generator(prompt, { num_inference_steps: 2 });
     return result.base64;
