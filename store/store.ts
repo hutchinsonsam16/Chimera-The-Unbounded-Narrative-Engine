@@ -278,6 +278,37 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
       get().handlePlayerAction(actionToRegen);
   },
   
+  generateCharacterPortrait: async () => {
+    if (get().gameState.isLoading) return;
+    set(state => ({ gameState: { ...state.gameState, isLoading: true }}));
+    get().addToast('Generating new character portrait...', 'info');
+
+    try {
+        const { character, settings } = get();
+        const autoPrompt = `Full body portrait of ${character.name}, a character whose status is ${JSON.stringify(character.status)}. They are carrying: ${character.inventory.join(', ')}.`;
+        
+        const { service } = settings.engine;
+        const b64Image = service === 'cloud' 
+            ? await generateImage(autoPrompt) 
+            : await generateLocalImage(autoPrompt);
+
+        const imageUrl = `data:image/jpeg;base64,${b64Image}`;
+        set(state => ({ 
+            character: { 
+                ...state.character, 
+                imageUrl, 
+                imageUrlHistory: [...state.character.imageUrlHistory, { url: imageUrl, prompt: autoPrompt }] 
+            }
+        }));
+        get().addToast('Character portrait updated!', 'success');
+    } catch (e) {
+        console.error("Manual portrait generation failed:", e);
+        get().addToast('Portrait generation failed.', 'error');
+    } finally {
+        set(state => ({ gameState: { ...state.gameState, isLoading: false }}));
+    }
+  },
+
   createSnapshot: (name) => {
       const { character, world, gameState } = get();
       const gameData: GameData = { character, world, gameState: { ...gameState, isLoading: false } };

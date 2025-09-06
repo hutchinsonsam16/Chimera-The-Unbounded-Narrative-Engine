@@ -181,6 +181,7 @@ export interface AppState extends GameData {
   setSettings: (settings: Partial<Settings>) => void;
   updateLogEntry: (id: string, newContent: string) => void;
   regenerateFrom: (id: string) => void;
+  generateCharacterPortrait: () => Promise<void>;
 
   // Snapshot Actions
   createSnapshot: (name: string) => void;

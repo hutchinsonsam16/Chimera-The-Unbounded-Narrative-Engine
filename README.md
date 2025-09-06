@@ -10,10 +10,12 @@
 
 * **Dual AI Engines**: Seamlessly switch between the powerful, cloud-based **Google Gemini API** for high-quality generation and a fully private, **in-browser local AI** for offline use.
 * **Dynamic Storytelling**: The AI acts as a "Director," reacting to your choices and dynamically updating the world, characters, and story around you.
-* **Rich World Context**: Keep track of everything with dedicated panels for your character's stats, the evolving world lore, a web of NPC relationships, and an interactive map.
-* **Resizable, Customizable UI**: Tailor your workspace to your liking with a draggable three-panel layout and multiple UI themes.
-* **Full Data Control**: Save your game state locally at any time. When your saga is complete, export the entire story, including images and prompts, to a zip archive.
-* **Cross-Platform**: Built with Electron, Chimera is designed to run on Windows, macOS, and Linux.
+* **Living Characters**: Generate portraits for your character and NPCs. The engine automatically updates your character's portrait when significant events occur.
+* **Rich World Context**: Keep track of everything with dedicated panels for your character's stats, a structured knowledge base, a web of NPC relationships, and an interactive map.
+* **Full Narrative Control**: Branch your story with Snapshots, edit past actions to explore different outcomes, and use the Undo/Redo feature for fine-grained control.
+* **Resizable, Customizable UI**: Tailor your workspace with a draggable three-panel layout and an advanced theme engine for customizing fonts, colors, and backgrounds.
+* **Full Data Control**: Save your game state locally at any time. When your saga is complete, export the entire story—including all text and every generated image—to a zip archive.
+* **Cross-Platform Ready**: Designed to be packaged with Electron for Windows, macOS, and Linux.
 
 ## 🚀 Getting Started
 
@@ -26,8 +28,8 @@
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/hutchinsonsam16/Chimera-The-Unbounded-Narrative-Engine
-    cd chimera-narrative-engine
+    git clone https://github.com/hutchinsonsam16/chimera-the-unbounded-narrative-engine.git
+    cd chimera-the-unbounded-narrative-engine
     ```
 
 2.  **Install dependencies:**
@@ -55,20 +57,18 @@
 
 ## 🧠 Running with Local AI Models (Offline & Private)
 
-Chimera can run AI models directly on your machine for 100% privacy and offline capability. This requires downloading models, which can be done from the **Local Model Hub** in the application's settings.
+Chimera can run AI models directly on your machine for 100% privacy and offline capability. This requires downloading models, which can be done from the **Local Model Hub** in the application's settings. Performance will depend on your computer's hardware.
 
-**Please Note:** Local models are significantly less powerful than cloud-based models like Gemini. Performance will depend heavily on your computer's hardware.
-
-### Recommended Local Models
+### Recommended Local Models (for systems with ~4GB RAM)
 
 * **Text Generation (for Roleplaying):**
-    * **Model:** `Xenova/phi-3-mini-4k-instruct`
-    * **Why:** This model offers one of the best balances between coherent, creative text generation and low resource usage. It is designed to run effectively on machines with as little as 4GB of RAM.
+    * **Option 1 (Best Balance):** `Xenova/phi-3-mini-4k-instruct` - Offers a strong balance of coherent, creative text generation and low resource usage.
+    * **Option 2 (Smallest):** `Xenova/Qwen2-0.5B-Instruct` - A smaller alternative for systems with very limited resources.
 
 * **Image Generation (CPU-Only):**
-    * **Important Caveat:** Generating "photo-realistic" images on a low-spec, CPU-only machine is not currently feasible. The models below will produce stylized or basic images and will be slow.
-    * **Performance Model:** `Xenova/TinySD` - Very fast for a local model, but images can be less detailed.
-    * **Quality Model:** `Xenova/stable-diffusion-2-1-base` - Capable of producing more detailed images, but will be **very slow** on CPU and may struggle on systems with low RAM.
+    * **Option 1 (Performance):** `Xenova/TinySD` - A very small model designed for speed. Produces stylized, non-photorealistic images.
+    * **Option 2 (Quality):** `Xenova/stable-diffusion-2-1-base` - Capable of producing more detailed images. Resource usage is higher.
+    * **Option 3 (Alternative Style):** `Xenova/LCM_Dreamshaper_v7` - Uses LCM for faster generation steps, providing another stylistic option.
 
 ### How to Use Local Models
 
@@ -76,9 +76,9 @@ Chimera can run AI models directly on your machine for 100% privacy and offline 
 2.  Open **Settings -> Engine**.
 3.  Switch the "Generation Service" to **Local (In-Browser)**.
 4.  Navigate to the **Local Model Hub**.
-5.  Find the input field and enter the model name you wish to download (e.g., `Xenova/phi-3-mini-4k-instruct`).
+5.  Enter the full model name you wish to download (e.g., `Xenova/phi-3-mini-4k-instruct`).
 6.  Click "Download." A progress bar will appear.
-7.  Once downloaded, you can select the model from the dropdown menus for text and image generation.
+7.  Once downloaded, select the model from the dropdown menus for text and image generation.
 
 ## 📦 Building the Application
 
@@ -87,4 +87,5 @@ To build the application as a standalone executable for your operating system:
 ```bash
 npm run build
 ```
+
 This will generate the necessary files in the `dist` directory.

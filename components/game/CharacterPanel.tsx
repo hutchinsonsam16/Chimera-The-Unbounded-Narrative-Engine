@@ -3,6 +3,7 @@ import { useStore } from '../../hooks/useStore';
 import { Accordion } from '../ui/Accordion';
 import { Button } from '../ui/Button';
 import { Quest } from '../../types';
+import { Tooltip } from '../ui/Tooltip';
 
 const DataEntry: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex justify-between text-sm">
@@ -26,7 +27,11 @@ export const CharacterPanel: React.FC = () => {
   const character = useStore((state) => state.character);
   const quests = useStore((state) => state.gameState.quests);
   const visibility = useStore((state) => state.settings.componentVisibility.character);
-  const exportCharacterSheet = useStore(state => state.exportCharacterSheet);
+  const isLoading = useStore(state => state.gameState.isLoading);
+  const { exportCharacterSheet, generateCharacterPortrait } = useStore(state => ({
+    exportCharacterSheet: state.exportCharacterSheet,
+    generateCharacterPortrait: state.generateCharacterPortrait,
+  }));
 
   const activeQuests = quests.filter(q => q.status === 'active');
   const completedQuests = quests.filter(q => q.status === 'completed');
@@ -35,7 +40,14 @@ export const CharacterPanel: React.FC = () => {
     <div className="bg-gray-800/50 h-full flex flex-col text-gray-200">
       <div className="p-4 border-b border-gray-700 flex justify-between items-center">
         <h2 className="text-2xl font-bold text-sky-400 font-[var(--font-heading)]">{character.name || 'Unnamed Character'}</h2>
-        <Button variant="secondary" size="sm" onClick={exportCharacterSheet}>Export Sheet</Button>
+        <div className="flex items-center space-x-2">
+            <Tooltip text="Generate a new portrait based on the character's current state.">
+                <Button variant="secondary" size="sm" onClick={generateCharacterPortrait} disabled={isLoading}>New Portrait</Button>
+            </Tooltip>
+            <Tooltip text="Export character data to a PDF file.">
+                <Button variant="secondary" size="sm" onClick={exportCharacterSheet}>Export Sheet</Button>
+            </Tooltip>
+        </div>
       </div>
       <div className="flex-grow overflow-y-auto">
         {visibility.portrait && (
