@@ -28,7 +28,7 @@
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/hutchinsonsam16/chimera-the-unbounded-narrative-engine.git
+    git clone [https://github.com/hutchinsonsam16/chimera-the-unbounded-narrative-engine.git](https://github.com/hutchinsonsam16/chimera-the-unbounded-narrative-engine.git)
     cd chimera-the-unbounded-narrative-engine
     ```
 
@@ -62,13 +62,13 @@ Chimera can run AI models directly on your machine for 100% privacy and offline 
 ### Recommended Local Models (for systems with ~4GB RAM)
 
 * **Text Generation (for Roleplaying):**
-    * **Option 1 (Best Balance):** `Xenova/phi-3-mini-4k-instruct` - Offers a strong balance of coherent, creative text generation and low resource usage.
-    * **Option 2 (Smallest):** `Xenova/Qwen2-0.5B-Instruct` - A smaller alternative for systems with very limited resources.
+    * **Option 1 (Best Balance):** `Xenova/phi-3-mini-4k-instruct`
+    * **Option 2 (Smallest):** `Qwen/Qwen2-0.5B-Instruct`
 
 * **Image Generation (CPU-Only):**
-    * **Option 1 (Performance):** `Xenova/TinySD` - A very small model designed for speed. Produces stylized, non-photorealistic images.
-    * **Option 2 (Quality):** `Xenova/stable-diffusion-2-1-base` - Capable of producing more detailed images. Resource usage is higher.
-    * **Option 3 (Alternative Style):** `Xenova/LCM_Dreamshaper_v7` - Uses LCM for faster generation steps, providing another stylistic option.
+    * **Option 1 (Performance):** `segmind/tiny-sd`
+    * **Option 2 (Quality):** `stabilityai/stable-diffusion-2-1-base`
+    * **Option 3 (Alternative Style):** `SimianLuo/LCM_Dreamshaper_v7`
 
 ### How to Use Local Models
 
@@ -78,7 +78,7 @@ Chimera can run AI models directly on your machine for 100% privacy and offline 
 4.  Navigate to the **Local Model Hub**.
 5.  Enter the full model name you wish to download (e.g., `Xenova/phi-3-mini-4k-instruct`).
 6.  Click "Download." A progress bar will appear.
-7.  Once downloaded, select the model from the dropdown menus for text and image generation.
+7.  Once downloaded, you can select the model from the dropdown menus for text and image generation.
 
 ## 📦 Building the Application
 
