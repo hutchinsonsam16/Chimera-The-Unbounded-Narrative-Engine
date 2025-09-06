@@ -1,9 +1,9 @@
-import { Settings, GamePhase, GenerationService, LocalImageModelQuality, PanelType, GameData, Persona, ApiKeyStatus } from './types';
+import { Settings, GamePhase, GenerationService, LocalImageModelQuality, PanelType, GameData, Persona, ApiKeyStatus, Theme } from './types';
 import { nanoid } from 'nanoid';
 
 // FIX: Converted template literal to a regular string to avoid parsing issues. The parser was incorrectly interpreting the string's content as code.
 export const DIRECTOR_SYSTEM_PROMPT = 'You are the Director, a master storyteller AI. Your role is to dynamically craft a rich, interactive narrative based on the provided game state and player actions.\n' +
-'1.  **Analyze State:** Deeply analyze the character\'s backstory, skills, inventory, status, and the world\'s lore and NPCs.\n' +
+'1.  **Analyze State:** Deeply analyze the character\'s backstory, skills, inventory, status, and the world\'s lore, NPCs, and their inter-relationships.\n' +
 '2.  **Process Action:** Interpret the player\'s action within the current context.\n' +
 '3.  **Narrate:** Describe the outcome of the action vividly. The world should feel alive and reactive.\n' +
 '4.  **Update State:** Modify the game state using specific XML-like tags. This is CRITICAL. Every change to the character or world MUST be encapsulated in a tag.\n' +
@@ -17,10 +17,13 @@ export const DIRECTOR_SYSTEM_PROMPT = 'You are the Director, a master storytelle
 '    *   `<world_lore>A new piece of lore discovered by the player.</world_lore>`\n' +
 '    *   `<add_npc>{"id": "npc-uuid", "name": "Elara", "description": "A mysterious rogue.", "relationship": "Neutral"}</add_npc>`\n' +
 '    *   `<update_npc id="npc-uuid">{"relationship": "Friendly"}</update_npc>`\n' +
+'    *   `<update_npc_relation npc1_id="npc1-uuid" npc2_id="npc2-uuid" value="-10" reason="Elara discovered Thorne stole her locket." />`\n' +
 '    *   `<quest_add title="Find the Sunstone" />`\n' +
 '    *   `<quest_update id="quest-uuid" status="completed" />`\n' +
 '    *   `<timeline_event>The hero discovered the ancient map.</timeline_event>`\n' +
 '    *   `<kb_entry name="Crimson Mountains" type="location" fields=\'{"region": "North", "danger_level": "High"}\' />`\n' +
+'    *   `<map_update location_name="The Old Mill" new_status="ruined" />`\n' +
+'    *   `<map_add_path start="Capital City" end="The Old Mill" style="dotted" />`\n' +
 '5.  **Generate Imagery:** When appropriate, use image generation tags.\n' +
 '    *   `<gen_image>A breathtaking view of the Crimson Mountains at sunset.</gen_image>`\n' +
 '    *   `<gen_char_image>The character, now wearing the enchanted amulet, a faint glow emanating from their chest.</gen_char_image>`\n' +
@@ -40,10 +43,45 @@ const defaultPersonas: Persona[] = [
     { id: nanoid(), name: 'Concise Director', prompt: DIRECTOR_SYSTEM_PROMPT.replace('vividly', 'concisely in 1-2 paragraphs') }
 ];
 
+const defaultThemes: Theme[] = [
+    {
+        name: 'Nocturne',
+        isCustom: false,
+        colors: {
+            primary: '#1f2937', // gray-800
+            secondary: '#374151', // gray-700
+            accent: '#38bdf8', // sky-400
+            text: '#f3f4f6', // gray-100
+            bg: '#111827', // gray-900
+        },
+        fonts: { body: 'Inter, sans-serif', heading: 'Orbitron, sans-serif' },
+        baseFontSize: 16,
+        backgroundImage: '',
+    },
+    {
+        name: 'Crimson',
+        isCustom: false,
+        colors: {
+            primary: '#261718',
+            secondary: '#40282a',
+            accent: '#ef4444', // red-500
+            text: '#f1e8e8',
+            bg: '#1a0f10',
+        },
+        fonts: { body: 'Lora, serif', heading: 'Inter, sans-serif' },
+        baseFontSize: 16,
+        backgroundImage: '',
+    }
+];
+
 export const DEFAULT_SETTINGS: Settings = {
   appName: APP_NAME,
   engine: {
     service: GenerationService.CLOUD,
+    localApi: {
+        baseUrl: 'http://localhost:11434',
+        apiKey: ''
+    },
     imageModelAssignments: {
       character: 'imagen-4.0-generate-001',
       npc: 'imagen-4.0-generate-001',
@@ -75,6 +113,14 @@ export const DEFAULT_SETTINGS: Settings = {
         suggestion: 1,
       }
   },
+  creditSystem: {
+      enabled: true,
+      mode: 'limited',
+      tiers: {
+          limited: 100,
+          pro: 1000,
+      }
+  },
   performance: {
       resourceLimit: 75,
   },
@@ -94,23 +140,10 @@ export const DEFAULT_SETTINGS: Settings = {
     },
     resourceMonitor: false,
   },
-  theme: {
-    name: 'Nocturne',
-    colors: {
-      primary: '#1f2937', // gray-800
-      secondary: '#374151', // gray-700
-      accent: '#38bdf8', // sky-400
-      text: '#f3f4f6', // gray-100
-      bg: '#111827', // gray-900
-    },
-    fonts: {
-      body: 'Inter, sans-serif',
-      heading: 'Orbitron, sans-serif',
-    },
-    baseFontSize: 16,
-    backgroundImage: '',
-  },
+  themes: defaultThemes,
+  activeThemeName: 'Nocturne',
   hasCompletedTutorial: false,
+  characterVoiceSample: '',
 };
 
 export const INITIAL_GAME_DATA: GameData = {
@@ -127,6 +160,9 @@ export const INITIAL_GAME_DATA: GameData = {
     lore: '',
     npcs: [],
     knowledgeBase: {},
+    interNpcRelationships: {},
+    locations: {},
+    mapPaths: [],
   },
   gameState: {
     phase: GamePhase.ONBOARDING,
@@ -141,7 +177,10 @@ export const INITIAL_STATE = {
   ...INITIAL_GAME_DATA,
   settings: DEFAULT_SETTINGS,
   snapshots: [],
-  credits: 100,
+  credits: {
+      current: DEFAULT_SETTINGS.creditSystem.tiers.limited,
+      max: DEFAULT_SETTINGS.creditSystem.tiers.limited
+  },
   isSettingsOpen: false,
   isDiceRollerOpen: false,
   isAudioPlayerOpen: false,

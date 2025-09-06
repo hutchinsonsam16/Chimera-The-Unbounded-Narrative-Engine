@@ -36,7 +36,10 @@ const ImageDropzone: React.FC<{ onDetailsGenerated: (details: { name: string, ba
       setIsLoading(true);
       try {
         const base64 = (await toBase64(file) as string).split(',')[1];
-        const details = await generateOnboardingFromImage(base64);
+        // FIX: Pass the model name from settings to the generation service.
+        const { settings } = useStore.getState();
+        const modelName = settings.engine.cloud.textModel;
+        const details = await generateOnboardingFromImage(base64, modelName);
         onDetailsGenerated({ ...details, imageBase64: base64 });
         addToast("Character details generated from image!", "success");
       } catch (error) {

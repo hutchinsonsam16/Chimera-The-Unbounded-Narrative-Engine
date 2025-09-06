@@ -1,66 +1,64 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { useStore } from '../hooks/useStore';
 
+// --- DEFERRED INITIALIZATION ---
 let ai: GoogleGenAI | null = null;
-let userProvidedKey: string | null = null;
+const USER_API_KEY_STORAGE = 'chimera_user_gemini_api_key';
 
-// This will be called by the store to set a user-entered key
-export const setUserProvidedApiKey = (key: string | null) => {
-    userProvidedKey = key;
-    ai = null; // Force re-initialization on next call
-};
-
-// This is the singleton getter
-const getGenAIClient = (): GoogleGenAI | null => {
+function getGenAIClient(): GoogleGenAI | null {
     if (ai) {
         return ai;
     }
-    
-    const key = userProvidedKey || process.env.API_KEY;
 
-    if (key) {
-        try {
-            ai = new GoogleGenAI({ apiKey: key });
-            return ai;
-        } catch (e) {
-            console.error("Failed to initialize GoogleGenAI:", e);
-            ai = null; // Ensure ai is null on failure
-            return null;
-        }
+    const userApiKey = localStorage.getItem(USER_API_KEY_STORAGE);
+    const envApiKey = process.env.GEMINI_API_KEY;
+    const apiKey = userApiKey || envApiKey;
+
+    if (!apiKey) {
+        console.warn("Gemini API key is not set in environment or local storage.");
+        return null;
     }
-    
-    return null;
-};
 
-export const verifyApiKey = async (key: string): Promise<boolean> => {
     try {
-        const testClient = new GoogleGenAI({ apiKey: key });
-        // Perform a lightweight, low-cost operation to confirm validity.
-        await testClient.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: 'test',
-            config: {
-                maxOutputTokens: 1,
-            },
-        });
+        ai = new GoogleGenAI({ apiKey });
+        return ai;
+    } catch (error) {
+        console.error("Failed to initialize GoogleGenAI client:", error);
+        if (userApiKey) {
+            localStorage.removeItem(USER_API_KEY_STORAGE);
+        }
+        return null;
+    }
+}
+
+export async function checkApiKey(): Promise<boolean> {
+    const client = getGenAIClient();
+    if (!client) {
+        return false;
+    }
+    try {
+        await client.models.list();
         return true;
     } catch (error) {
         console.error("API Key validation failed:", error);
         return false;
     }
-};
+}
 
+export function setUserApiKey(key: string) {
+    if (key) {
+        localStorage.setItem(USER_API_KEY_STORAGE, key);
+    } else {
+        localStorage.removeItem(USER_API_KEY_STORAGE);
+    }
+    ai = null;
+}
 
-export async function* generateTextStream(prompt: string): AsyncGenerator<string> {
+export async function* generateTextStream(prompt: string, modelName: string, systemInstruction: string): AsyncGenerator<string> {
     const client = getGenAIClient();
-    if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
-
-    const state = useStore.getState();
-    const modelName = state.settings.engine.cloud.textModel;
+    if (!client) {
+        throw new Error("Gemini client is not initialized. Please set an API key.");
+    }
     
-    const activePersona = state.settings.engine.cloud.personas.find(p => p.id === state.settings.engine.cloud.activePersonaId);
-    const systemInstruction = activePersona ? activePersona.prompt : "You are a helpful AI assistant.";
-
     try {
         const response = await client.models.generateContentStream({
             model: modelName,
@@ -79,11 +77,10 @@ export async function* generateTextStream(prompt: string): AsyncGenerator<string
     }
 }
 
-export async function generateEnhancedPrompt(prompt: string): Promise<string> {
+export async function generateEnhancedPrompt(prompt: string, modelName: string): Promise<string> {
     const client = getGenAIClient();
-    if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
+    if (!client) throw new Error("Gemini client not initialized.");
 
-    const modelName = useStore.getState().settings.engine.cloud.textModel;
     const fullPrompt = `Rephrase the following first-person player action into a descriptive, third-person literary action. Only return the rephrased action, no other text.\n\nORIGINAL: "${prompt}"\n\nREPHRASED:`;
      try {
         const response = await client.models.generateContent({
@@ -97,41 +94,37 @@ export async function generateEnhancedPrompt(prompt: string): Promise<string> {
     }
 }
 
-export const generateImage = async (prompt: string, modelNameOverride?: string): Promise<string> => {
-  const client = getGenAIClient();
-  if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
-    
-  const modelName = modelNameOverride || useStore.getState().settings.engine.cloud.imageModel;
+export const generateImage = async (prompt: string, modelName: string): Promise<string> => {
+    const client = getGenAIClient();
+    if (!client) throw new Error("Gemini client not initialized.");
   
-  try {
-    const response = await client.models.generateImages({
-        model: modelName,
-        prompt: prompt,
-        config: {
-          numberOfImages: 1,
-          outputMimeType: 'image/jpeg',
-          aspectRatio: '1:1',
-        },
-    });
+    try {
+        const response = await client.models.generateImages({
+            model: modelName,
+            prompt: prompt,
+            config: {
+                numberOfImages: 1,
+                outputMimeType: 'image/jpeg',
+                aspectRatio: '1:1',
+            },
+        });
 
-    if (response.generatedImages && response.generatedImages.length > 0) {
-        return response.generatedImages[0].image.imageBytes;
-    } else {
-        throw new Error("No image was generated by the API.");
+        if (response.generatedImages && response.generatedImages.length > 0) {
+            return response.generatedImages[0].image.imageBytes;
+        } else {
+            throw new Error("No image was generated by the API.");
+        }
+    } catch (error) {
+        console.error("Gemini image generation error:", error);
+        throw new Error("Failed to generate image from Gemini API.");
     }
-  } catch (error) {
-    console.error("Gemini image generation error:", error);
-    throw new Error("Failed to generate image from Gemini API.");
-  }
 };
 
-
-export const suggestActionFromContext = async (context: string): Promise<string[]> => {
+export const suggestActionFromContext = async (context: string, modelName: string, voiceSample: string): Promise<string[]> => {
     const client = getGenAIClient();
-    if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
+    if (!client) throw new Error("Gemini client not initialized.");
 
-    const modelName = useStore.getState().settings.engine.cloud.textModel;
-    const prompt = `Given the following game context, suggest 1-3 creative and relevant actions or lines of dialogue for the player character. The suggestions should be in the character's voice.\n\nCONTEXT:\n${context}\n\nSUGGESTIONS:`;
+    const prompt = `Given the following game context, suggest 1-3 creative and relevant actions or lines of dialogue for the player character. ${voiceSample ? `The character's speaking style is as follows: "${voiceSample}" Match this style.` : "The suggestions should be in the character's voice."}\n\nCONTEXT:\n${context}\n\nSUGGESTIONS:`;
 
     try {
         const response = await client.models.generateContent({
@@ -160,7 +153,7 @@ export const suggestActionFromContext = async (context: string): Promise<string[
 
 export const editImageWithMask = async (prompt: string, imageBase64: string, maskBase64?: string): Promise<{image: string, text: string}> => {
     const client = getGenAIClient();
-    if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
+    if (!client) throw new Error("Gemini client not initialized.");
 
     const modelName = 'gemini-2.5-flash-image-preview';
 
@@ -204,12 +197,9 @@ export const editImageWithMask = async (prompt: string, imageBase64: string, mas
     }
 };
 
-
-export const generateOnboardingFromImage = async (imageBase64: string): Promise<{name: string, backstory: string, openingPrompt: string}> => {
+export const generateOnboardingFromImage = async (imageBase64: string, modelName: string): Promise<{name: string, backstory: string, openingPrompt: string}> => {
     const client = getGenAIClient();
-    if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
-    
-    const modelName = useStore.getState().settings.engine.cloud.textModel;
+    if (!client) throw new Error("Gemini client not initialized.");
 
     const imagePart = { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } };
     const textPart = { text: "Analyze this character portrait. Based on their appearance, invent a creative character name, a short, compelling backstory (2-3 sentences), and an exciting opening story prompt for a fantasy RPG." };

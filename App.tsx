@@ -3,7 +3,7 @@ import { OnboardingWizard } from './components/onboarding/OnboardingWizard';
 import { GameUI } from './components/game/GameUI';
 import { FullSettingsDialog } from './components/settings/FullSettingsDialog';
 import { useStore } from './hooks/useStore';
-import { GamePhase } from './types';
+import { GamePhase, GenerationService } from './types';
 import { ToastContainer } from './components/ui/Toast';
 import { DiceRoller } from './components/game/DiceRoller';
 import { AmbientAudioPlayer } from './components/game/AmbientAudioPlayer';
@@ -12,9 +12,12 @@ import { ExportFormatModal } from './components/game/ExportFormatModal';
 import { ImageEditorModal } from './components/game/ImageEditorModal';
 import { InteractiveTutorial } from './components/game/InteractiveTutorial';
 import { ApiKeyModal } from './components/ApiKeyModal';
+import { Spinner } from './components/ui/Spinner';
 
 const ThemeManager: React.FC = () => {
-  const theme = useStore((state) => state.settings.theme);
+  const themes = useStore((state) => state.settings.themes);
+  const activeTheme = useStore((state) => state.settings.activeThemeName);
+  const theme = themes.find(t => t.name === activeTheme) || themes[0];
 
   useEffect(() => {
     // Colors
@@ -63,64 +66,33 @@ const ThemeManager: React.FC = () => {
   return null;
 };
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const gamePhase = useStore(state => state.gameState.phase);
   const isSettingsOpen = useStore(state => state.isSettingsOpen);
   const isDiceRollerOpen = useStore(state => state.isDiceRollerOpen);
   const isAudioPlayerOpen = useStore(state => state.isAudioPlayerOpen);
   const toggleSettings = useStore(state => state.toggleSettings);
-  const toggleCommandPalette = useStore(state => state.toggleCommandPalette);
   const isCommandPaletteOpen = useStore(state => state.isCommandPaletteOpen);
   const healthStatus = useStore(state => state.character.status.Health);
   const isExportModalOpen = useStore(state => state.isExportModalOpen);
   const isImageEditorOpen = useStore(state => state.isImageEditorOpen);
   const hasCompletedTutorial = useStore(state => state.settings.hasCompletedTutorial);
 
-  const service = useStore(state => state.settings.engine.service);
-  const apiKeyStatus = useStore(state => state.apiKeyStatus);
-  const validateApiKey = useStore(state => state.validateApiKey);
-  
   const isWounded = healthStatus?.toLowerCase().includes('wounded') || healthStatus?.toLowerCase().includes('injured');
   const showTutorial = gamePhase === GamePhase.PLAYING && !hasCompletedTutorial;
 
-  useEffect(() => {
-    if (service === 'cloud' && apiKeyStatus === 'unvalidated') {
-      validateApiKey();
-    }
-  }, [service, apiKeyStatus, validateApiKey]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'k') {
-        e.preventDefault();
-        toggleCommandPalette();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [toggleCommandPalette]);
-
-  const showApiKeyModal = service === 'cloud' && (apiKeyStatus === 'invalid' || apiKeyStatus === 'validating');
-  const showApp = apiKeyStatus === 'valid' || service === 'local';
-
   return (
     <>
-      <ThemeManager />
-      <ToastContainer />
       <div className={`bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)] h-screen w-screen overflow-hidden flex flex-col transition-all duration-500 ${isWounded ? 'low-health-effect' : ''}`}>
-        {showApiKeyModal && <ApiKeyModal />}
-        {showApp && gamePhase === GamePhase.ONBOARDING && <OnboardingWizard />}
-        {showApp && gamePhase === GamePhase.PLAYING && <GameUI />}
+        {gamePhase === GamePhase.ONBOARDING && <OnboardingWizard />}
+        {gamePhase === GamePhase.PLAYING && <GameUI />}
         {isSettingsOpen && <FullSettingsDialog onClose={toggleSettings} />}
         {isCommandPaletteOpen && <CommandPalette />}
         {isExportModalOpen && <ExportFormatModal />}
         {isImageEditorOpen.open && <ImageEditorModal logEntryId={isImageEditorOpen.logEntryId!} />}
         {isDiceRollerOpen && <DiceRoller />}
         {isAudioPlayerOpen && <AmbientAudioPlayer />}
-        {showApp && showTutorial && <InteractiveTutorial />}
+        {showTutorial && <InteractiveTutorial />}
       </div>
        <style>{`
             .low-health-effect {
@@ -132,6 +104,68 @@ const App: React.FC = () => {
                 100% { box-shadow: inset 0 0 0px rgba(255, 0, 0, 0.2); }
             }
         `}</style>
+    </>
+  );
+};
+
+
+const App: React.FC = () => {
+  const { apiKeyStatus, validateApiKey, toggleCommandPalette, service } = useStore(state => ({
+      apiKeyStatus: state.apiKeyStatus,
+      validateApiKey: state.validateApiKey,
+      toggleCommandPalette: state.toggleCommandPalette,
+      service: state.settings.engine.service,
+  }));
+
+  // This effect runs only once on startup to validate the API key.
+  useEffect(() => {
+    if (apiKeyStatus === 'unvalidated' && service === GenerationService.CLOUD) {
+      validateApiKey();
+    }
+  }, []); // The empty array is critical to prevent an infinite loop.
+
+  // This effect adds the command palette shortcut.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'k') {
+        e.preventDefault();
+        toggleCommandPalette();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [toggleCommandPalette]);
+
+  const renderContent = () => {
+    if (service === GenerationService.LOCAL) {
+        return <AppContent />;
+    }
+
+    switch (apiKeyStatus) {
+      case 'unvalidated':
+      case 'validating':
+        return (
+          <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-900">
+            <Spinner />
+            <p className="mt-4 text-gray-400">Validating API connection...</p>
+          </div>
+        );
+      case 'invalid':
+        return <ApiKeyModal />;
+      case 'valid':
+        return <AppContent />;
+      default:
+        return <div>Something went wrong.</div>;
+    }
+  };
+
+  return (
+    <>
+      <ThemeManager />
+      <ToastContainer />
+      {renderContent()}
     </>
   );
 };

@@ -6,6 +6,20 @@ export enum GamePhase {
 export enum GenerationService {
   CLOUD = 'cloud',
   LOCAL = 'local',
+  LOCAL_API = 'local_api'
+}
+
+export interface Location {
+    name: string;
+    x: number;
+    y: number;
+    status: 'discovered' | 'ruined' | 'conquered' | 'hidden';
+}
+
+export interface MapPath {
+    start: string; // location name
+    end: string;   // location name
+    style: 'solid' | 'dotted' | 'dashed';
 }
 
 export enum LocalImageModelQuality {
@@ -20,7 +34,7 @@ export interface Quest {
 }
 
 export interface KnowledgeBaseEntry {
-  id: string;
+  id:string;
   name: string;
   type: 'npc' | 'location' | 'item' | 'lore';
   fields: { [key: string]: string };
@@ -58,9 +72,12 @@ export interface KnowledgeBase {
 }
 
 export interface World {
-  lore: string; // for narrative flavour and map locations
+  lore: string;
   npcs: NPC[];
   knowledgeBase: KnowledgeBase;
+  interNpcRelationships: { [npcId: string]: { [otherNpcId: string]: number } };
+  locations: Record<string, Location>;
+  mapPaths: MapPath[];
 }
 
 export interface GameState {
@@ -75,6 +92,7 @@ export type PanelType = 'character' | 'narrative' | 'context';
 
 export interface Theme {
   name: string;
+  isCustom: boolean;
   colors: {
     primary: string;
     secondary: string;
@@ -98,10 +116,16 @@ export interface Persona {
 
 export type ImageGenerationContext = 'character' | 'npc' | 'scene' | 'creature';
 
+export type CreditSystemMode = 'off' | 'limited' | 'unlimited';
+
 export interface Settings {
   appName: string;
   engine: {
     service: GenerationService;
+    localApi: {
+        baseUrl: string;
+        apiKey: string;
+    };
     imageModelAssignments: Record<ImageGenerationContext, string>;
     local: {
       textModel: string;
@@ -128,6 +152,14 @@ export interface Settings {
         suggestion: number;
       }
   };
+  creditSystem: {
+      enabled: boolean;
+      mode: CreditSystemMode;
+      tiers: {
+          limited: number;
+          pro: number;
+      }
+  };
   performance: {
       resourceLimit: number; // Percentage
   };
@@ -147,8 +179,10 @@ export interface Settings {
     };
     resourceMonitor: boolean;
   };
-  theme: Theme;
+  themes: Theme[];
+  activeThemeName: string;
   hasCompletedTutorial: boolean;
+  characterVoiceSample: string;
 }
 
 export interface Toast {
@@ -177,7 +211,10 @@ export type ApiKeyStatus = 'unvalidated' | 'validating' | 'valid' | 'invalid';
 export interface AppState extends GameData {
   settings: Settings;
   snapshots: Snapshot[];
-  credits: number;
+  credits: {
+      current: number;
+      max: number;
+  };
   isSettingsOpen: boolean;
   isDiceRollerOpen: boolean;
   isAudioPlayerOpen: boolean;
@@ -209,7 +246,7 @@ export interface AppState extends GameData {
   setAudioUrl: (url: string) => void;
   setPanelOrder: (order: PanelType[]) => void;
   setPanelSizes: (sizes: number[]) => void;
-  setSettings: (settings: Partial<Settings>) => void;
+  setSettings: (settings: Partial<Settings> | ((current: Settings) => Partial<Settings>)) => void;
   updateLogEntry: (id: string, newContent: string) => void;
   regenerateFrom: (id: string) => void;
   generateCharacterPortrait: () => Promise<void>;
@@ -240,4 +277,10 @@ export interface AppState extends GameData {
   validateApiKey: (key?: string) => Promise<void>;
   switchToLocalMode: () => void;
   setUserApiKey: (key: string) => void;
+
+  // Theme actions
+  addTheme: (theme: Theme) => void;
+  updateTheme: (theme: Theme) => void;
+  deleteTheme: (name: string) => void;
+  setActiveTheme: (name: string) => void;
 }

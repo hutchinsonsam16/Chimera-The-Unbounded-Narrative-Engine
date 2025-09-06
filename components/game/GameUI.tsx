@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useStore } from '../../hooks/useStore';
 import { CharacterPanel } from './CharacterPanel';
@@ -38,7 +39,8 @@ export const GameUI: React.FC = () => {
       <header className="flex-shrink-0 h-14 bg-gray-800/80 backdrop-blur-sm border-b border-gray-700 flex items-center justify-between px-4 z-10">
         <h1 className="text-xl font-bold text-sky-400 font-[var(--font-heading)]">{appName}</h1>
         <div className="flex items-center space-x-4">
-            <div className="text-sm font-semibold text-gray-300">Credits: <span className="text-sky-400">{credits}</span></div>
+            {/* FIX: Changed `credits` object to `credits.current` to render the number of credits. */}
+            <div className="text-sm font-semibold text-gray-300">Credits: <span className="text-sky-400">{credits.current}</span></div>
             <div className="flex items-center space-x-2">
                 <Tooltip text="Open Command Palette (Ctrl+K)">
                   <Button variant="secondary" onClick={toggleCommandPalette}>Commands</Button>

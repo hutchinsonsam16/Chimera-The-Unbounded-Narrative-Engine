@@ -6,18 +6,19 @@ import { Button } from './ui/Button';
 import { Spinner } from './ui/Spinner';
 
 export const ApiKeyModal: React.FC = () => {
-    const { validateApiKey, switchToLocalMode, apiKeyStatus } = useStore(state => ({
+    const { validateApiKey, switchToLocalMode, apiKeyStatus, setUserApiKey } = useStore(state => ({
         validateApiKey: state.validateApiKey,
         switchToLocalMode: state.switchToLocalMode,
-        apiKeyStatus: state.apiKeyStatus
+        apiKeyStatus: state.apiKeyStatus,
+        setUserApiKey: state.setUserApiKey,
     }));
     const [keyInput, setKeyInput] = useState('');
 
     const isLoading = apiKeyStatus === 'validating';
 
-    const handleValidate = async () => {
+    const handleValidate = () => {
         if (!keyInput.trim()) return;
-        await validateApiKey(keyInput.trim());
+        setUserApiKey(keyInput.trim());
     };
 
     return (

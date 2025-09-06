@@ -11,7 +11,10 @@ export const ModelSandbox: React.FC = () => {
     const [cloudOutput, setCloudOutput] = useState('');
     const [localOutput, setLocalOutput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const addToast = useStore(state => state.addToast);
+    const { addToast, settings } = useStore(state => ({
+        addToast: state.addToast,
+        settings: state.settings,
+    }));
 
     const handleGenerate = async () => {
         if (!prompt) return;
@@ -30,7 +33,11 @@ export const ModelSandbox: React.FC = () => {
             // Cloud generation (streaming)
             const cloudPromise = (async () => {
                  try {
-                    const stream = await generateTextStream(prompt);
+                    // FIX: Pass the model name and system instruction from settings.
+                    const { cloud } = settings.engine;
+                    const activePersona = cloud.personas.find(p => p.id === cloud.activePersonaId);
+                    const systemInstruction = activePersona ? activePersona.prompt : 'You are a helpful AI assistant.';
+                    const stream = await generateTextStream(prompt, cloud.textModel, systemInstruction);
                     for await (const chunk of stream) {
                         setCloudOutput(prev => prev + chunk);
                     }

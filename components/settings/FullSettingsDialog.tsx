@@ -4,7 +4,7 @@ import { Dialog } from '../ui/Dialog';
 import { Tabs } from '../ui/Tabs';
 import { Button } from '../ui/Button';
 import { PanelOrderManager } from './PanelOrderManager';
-import { GenerationService, Theme, Persona, ImageGenerationContext } from '../../types';
+import { GenerationService, Theme, Persona, ImageGenerationContext, Settings } from '../../types';
 import { toBase64 } from '../../lib/utils';
 import { Input } from '../ui/Input';
 import { Textarea } from '../ui/Textarea';
@@ -86,7 +86,7 @@ const EngineSettings: React.FC = () => {
     ];
 
     const handleServiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setSettings({ ...settings, engine: { ...settings.engine, service: e.target.value as GenerationService }});
+        setSettings((current) => ({ ...current, engine: { ...current.engine, service: e.target.value as GenerationService }}));
     };
     
     // Mock download
@@ -104,16 +104,16 @@ const EngineSettings: React.FC = () => {
     }
     
     const handleAssignmentChange = (context: ImageGenerationContext, model: string) => {
-        setSettings({
-            ...settings,
+        setSettings(current => ({
+            ...current,
             engine: {
-                ...settings.engine,
+                ...current.engine,
                 imageModelAssignments: {
-                    ...settings.engine.imageModelAssignments,
+                    ...current.engine.imageModelAssignments,
                     [context]: model,
                 },
             },
-        });
+        }));
     };
 
     return (
@@ -177,7 +177,7 @@ const GameplaySettings: React.FC = () => {
     const handleCostChange = (key: keyof typeof costs, value: string) => {
         const numValue = parseInt(value, 10);
         if (!isNaN(numValue)) {
-            setSettings({ ...settings, gameplay: { ...settings.gameplay, costs: { ...costs, [key]: numValue } } });
+            setSettings(current => ({ ...current, gameplay: { ...current.gameplay, costs: { ...costs, [key]: numValue } } }));
         }
     };
     
@@ -203,7 +203,7 @@ const PerformanceSettings: React.FC = () => {
     }));
 
     const handleLimitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setSettings({ ...settings, performance: { ...settings.performance, resourceLimit: parseInt(e.target.value, 10) }});
+        setSettings(current => ({ ...current, performance: { ...current.performance, resourceLimit: parseInt(e.target.value, 10) }}));
     }
 
     return (
@@ -220,17 +220,31 @@ const PerformanceSettings: React.FC = () => {
 }
 
 const StyleSettings: React.FC = () => {
-    const theme = useStore(state => state.settings.theme);
-    const setSettings = useStore(state => state.setSettings);
+    // FIX: Access the full settings object to find the active theme, instead of a non-existent `theme` property.
+    const { settings, setSettings } = useStore(state => ({
+        settings: state.settings,
+        setSettings: state.setSettings,
+    }));
+    const theme = settings.themes.find(t => t.name === settings.activeThemeName) || settings.themes[0];
+    
     const fonts = ["Inter, sans-serif", "Orbitron, sans-serif", "Roboto, sans-serif", "Lora, serif", "Source Code Pro, monospace"];
 
-    const handleThemeChange = <K extends keyof Theme>(key: K, value: Theme[K]) => {
-        setSettings({ theme: { ...theme, [key]: value } });
+    // FIX: Correctly update the active theme within the `themes` array in the settings state.
+    const handleThemeUpdate = (updatedTheme: Theme) => {
+        if (!theme) return;
+        const newThemes = settings.themes.map(t => t.name === updatedTheme.name ? updatedTheme : t);
+        setSettings({ themes: newThemes });
     };
-    
+
+    const handleThemeChange = <K extends keyof Omit<Theme, 'name' | 'isCustom'>>(key: K, value: Theme[K]) => {
+        if (!theme) return;
+        handleThemeUpdate({ ...theme, [key]: value });
+    };
+
     const handleFontChange = (type: 'body' | 'heading', value: string) => {
-        setSettings({ theme: { ...theme, fonts: { ...theme.fonts, [type]: value } } });
-    }
+        if (!theme) return;
+        handleThemeUpdate({ ...theme, fonts: { ...theme.fonts, [type]: value } });
+    };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -238,7 +252,9 @@ const StyleSettings: React.FC = () => {
             const base64 = await toBase64(file);
             handleThemeChange('backgroundImage', base64 as string);
         }
-    }
+    };
+
+    if (!theme) return null; // Guard clause if no theme is found
 
     return (
         <div className="space-y-6">
@@ -270,8 +286,36 @@ const LayoutSettings: React.FC = () => {
     const visibility = useStore(state => state.settings.componentVisibility);
     const setSettings = useStore(state => state.setSettings);
     
-    const handleVisibilityChange = (key: keyof typeof visibility, value: boolean) => {
-        setSettings({ componentVisibility: { ...visibility, [key]: value } });
+    // FIX: This function was attempting to spread a boolean for the `resourceMonitor` setting,
+    // causing a crash. It now checks if the target property is an object before spreading.
+    const handleVisibilityChange = (section: keyof typeof visibility, key: string, value: boolean) => {
+        setSettings(current => {
+            const sectionData = current.componentVisibility[section];
+
+            if (typeof sectionData !== 'object' || sectionData === null) {
+                return {}; // Return empty partial for no change
+            }
+
+            return {
+                componentVisibility: {
+                    ...current.componentVisibility,
+                    [section]: {
+                        ...sectionData,
+                        [key]: value,
+                    }
+                }
+            };
+        });
+    };
+    
+    const handleTopLevelVisibilityChange = (key: keyof typeof visibility, value: boolean) => {
+         setSettings(current => ({
+            ...current,
+            componentVisibility: {
+                ...current.componentVisibility,
+                [key]: value,
+            }
+         }));
     };
 
     return (
@@ -281,7 +325,7 @@ const LayoutSettings: React.FC = () => {
                 <h4 className="text-md font-semibold text-gray-200 mb-2">UI Components</h4>
                 <div className="space-y-2">
                      <label className="flex items-center space-x-3">
-                        <input type="checkbox" checked={visibility.resourceMonitor} onChange={e => handleVisibilityChange('resourceMonitor', e.target.checked)} className="rounded bg-gray-700 border-gray-600 text-sky-500 focus:ring-sky-600"/>
+                        <input type="checkbox" checked={visibility.resourceMonitor} onChange={e => handleTopLevelVisibilityChange('resourceMonitor', e.target.checked)} className="rounded bg-gray-700 border-gray-600 text-sky-500 focus:ring-sky-600"/>
                         <span className="text-sm text-gray-300">Show Resource Monitor</span>
                     </label>
                 </div>
