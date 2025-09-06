@@ -15,9 +15,14 @@ import { ApiKeyModal } from './components/onboarding/ApiKeyModal';
 import { Spinner } from './components/ui/Spinner';
 
 const ThemeManager: React.FC = () => {
-  const theme = useStore((state) => state.settings.theme);
+  // FIX: Correctly select the active theme from the themes array based on the activeThemeName.
+  const { themes, activeThemeName } = useStore((state) => state.settings);
+  const theme = themes.find(t => t.name === activeThemeName);
 
   useEffect(() => {
+    // Guard clause: If for some reason the theme isn't found, do nothing to prevent a crash.
+    if (!theme) return;
+
     // Colors
     const root = document.documentElement;
     root.style.setProperty('--color-primary', theme.colors.primary);
