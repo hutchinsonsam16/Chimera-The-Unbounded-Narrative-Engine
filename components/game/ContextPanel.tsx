@@ -3,11 +3,9 @@ import { useStore } from '../../hooks/useStore';
 import { Tabs } from '../ui/Tabs';
 import { RelationshipWeb } from './RelationshipWeb';
 import { InteractiveMap } from './InteractiveMap';
-
-const LoreTab: React.FC = () => {
-    const lore = useStore(state => state.world.lore);
-    return <div className="p-2 text-sm text-gray-300 whitespace-pre-wrap prose prose-invert prose-sm max-w-none">{lore}</div>;
-};
+import { KnowledgeBaseViewer } from './KnowledgeBaseViewer';
+import { TimelineViewer } from './TimelineViewer';
+import { SnapshotsManager } from './SnapshotsManager';
 
 const NpcsTab: React.FC = () => {
     const npcs = useStore(state => state.world.npcs);
@@ -17,10 +15,13 @@ const NpcsTab: React.FC = () => {
     return (
         <div className="space-y-4 p-2">
             {npcs.map(npc => (
-                <div key={npc.id} className="p-3 bg-gray-800 rounded-lg shadow">
-                    <h4 className="font-bold text-sky-400 font-[var(--font-heading)]">{npc.name}</h4>
-                    <p className="text-xs text-gray-400">Relationship: <span className="font-semibold">{npc.relationship}</span></p>
-                    <p className="text-sm mt-1 text-gray-300">{npc.description}</p>
+                <div key={npc.id} className="p-3 bg-gray-800 rounded-lg shadow flex space-x-4 items-start">
+                    {npc.imageUrl && <img src={npc.imageUrl} alt={npc.name} className="w-16 h-16 rounded object-cover flex-shrink-0" />}
+                    <div className="flex-grow">
+                        <h4 className="font-bold text-sky-400 font-[var(--font-heading)]">{npc.name}</h4>
+                        <p className="text-xs text-gray-400">Relationship: <span className="font-semibold">{npc.relationship}</span></p>
+                        <p className="text-sm mt-1 text-gray-300">{npc.description}</p>
+                    </div>
                 </div>
             ))}
         </div>
@@ -31,8 +32,11 @@ const NpcsTab: React.FC = () => {
 export const ContextPanel: React.FC = () => {
   const visibility = useStore((state) => state.settings.componentVisibility.context);
   
-  const tabs = [];
-  if (visibility.lore) tabs.push({ label: 'Lore', content: <LoreTab /> });
+  const tabs = [
+      { label: 'Knowledge Base', content: <KnowledgeBaseViewer /> },
+      { label: 'Timeline', content: <TimelineViewer /> },
+      { label: 'Branches', content: <SnapshotsManager /> },
+  ];
   if (visibility.npcs) tabs.push({ label: 'NPCs', content: <NpcsTab /> });
   if (visibility.relationshipWeb) tabs.push({ label: 'Relationship Web', content: <RelationshipWeb /> });
   if (visibility.map) tabs.push({ label: 'Interactive Map', content: <InteractiveMap /> });

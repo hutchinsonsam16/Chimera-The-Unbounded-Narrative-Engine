@@ -7,6 +7,7 @@ import { GamePhase } from './types';
 import { ToastContainer } from './components/ui/Toast';
 import { DiceRoller } from './components/game/DiceRoller';
 import { AmbientAudioPlayer } from './components/game/AmbientAudioPlayer';
+import { CommandPalette } from './components/ui/CommandPalette';
 
 const ThemeManager: React.FC = () => {
   const theme = useStore((state) => state.settings.theme);
@@ -64,18 +65,48 @@ const App: React.FC = () => {
   const isDiceRollerOpen = useStore((state) => state.isDiceRollerOpen);
   const isAudioPlayerOpen = useStore((state) => state.isAudioPlayerOpen);
   const toggleSettings = useStore((state) => state.toggleSettings);
+  const toggleCommandPalette = useStore(state => state.toggleCommandPalette);
+  const isCommandPaletteOpen = useStore(state => state.isCommandPaletteOpen);
+  const healthStatus = useStore(state => state.character.status.Health);
+
+  const isWounded = healthStatus?.toLowerCase().includes('wounded') || healthStatus?.toLowerCase().includes('injured');
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'k') {
+        e.preventDefault();
+        toggleCommandPalette();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [toggleCommandPalette]);
 
   return (
     <>
       <ThemeManager />
       <ToastContainer />
-      <div className="bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)] h-screen w-screen overflow-hidden flex flex-col">
+      <div className={`bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)] h-screen w-screen overflow-hidden flex flex-col transition-all duration-500 ${isWounded ? 'low-health-effect' : ''}`}>
         {gamePhase === GamePhase.ONBOARDING && <OnboardingWizard />}
         {gamePhase === GamePhase.PLAYING && <GameUI />}
         {isSettingsOpen && <FullSettingsDialog onClose={toggleSettings} />}
+        {isCommandPaletteOpen && <CommandPalette />}
         {isDiceRollerOpen && <DiceRoller />}
         {isAudioPlayerOpen && <AmbientAudioPlayer />}
       </div>
+       <style>{`
+            .low-health-effect {
+                animation: pulse-red 2s infinite;
+            }
+            @keyframes pulse-red {
+                0% { box-shadow: inset 0 0 0px rgba(255, 0, 0, 0.2); }
+                50% { box-shadow: inset 0 0 100px rgba(255, 0, 0, 0.5); }
+                100% { box-shadow: inset 0 0 0px rgba(255, 0, 0, 0.2); }
+            }
+        `}</style>
     </>
   );
 };

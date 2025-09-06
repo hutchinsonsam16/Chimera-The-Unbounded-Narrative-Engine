@@ -16,9 +16,14 @@ export const DIRECTOR_SYSTEM_PROMPT = 'You are the Director, a master storytelle
 '    *   `<world_lore>A new piece of lore discovered by the player.</world_lore>`\n' +
 '    *   `<add_npc>{"id": "npc-uuid", "name": "Elara", "description": "A mysterious rogue.", "relationship": "Neutral"}</add_npc>`\n' +
 '    *   `<update_npc id="npc-uuid">{"relationship": "Friendly"}</update_npc>`\n' +
+'    *   `<quest_add title="Find the Sunstone" />`\n' +
+'    *   `<quest_update id="quest-uuid" status="completed" />`\n' +
+'    *   `<timeline_event>The hero discovered the ancient map.</timeline_event>`\n' +
+'    *   `<kb_entry name="Crimson Mountains" type="location" fields=\'{"region": "North", "danger_level": "High"}\' />`\n' +
 '5.  **Generate Imagery:** When appropriate, use image generation tags.\n' +
 '    *   `<gen_image>A breathtaking view of the Crimson Mountains at sunset.</gen_image>`\n' +
 '    *   `<gen_char_image>The character, now wearing the enchanted amulet, a faint glow emanating from their chest.</gen_char_image>`\n' +
+'    *   `<gen_npc_image id="npc-uuid" prompt="A portrait of Elara, the mysterious rogue, smirking in a dimly lit tavern." />`\n' +
 '6.  **Maintain Consistency:** Ensure all narrative and state changes are logical and consistent with the established world and character.\n' +
 'Do NOT output markdown. Do not surround your response with any backticks. Output plain text and tags only.';
 
@@ -46,6 +51,9 @@ export const DEFAULT_SETTINGS: Settings = {
     panelOrder: ['character', 'narrative', 'context'],
     panelSizes: [25, 50, 25],
   },
+  gameplay: {
+      promptAssist: false,
+  },
   componentVisibility: {
     character: {
       portrait: true,
@@ -60,6 +68,7 @@ export const DEFAULT_SETTINGS: Settings = {
       map: true,
       lore: true,
     },
+    resourceMonitor: false,
   },
   theme: {
     name: 'Nocturne',
@@ -92,21 +101,25 @@ export const INITIAL_GAME_DATA: GameData = {
   world: {
     lore: '',
     npcs: [],
+    knowledgeBase: {},
   },
   gameState: {
     phase: GamePhase.ONBOARDING,
     isLoading: false,
     storyLog: [],
     timeline: [],
+    quests: [],
   },
 }
 
 export const INITIAL_STATE = {
   ...INITIAL_GAME_DATA,
   settings: DEFAULT_SETTINGS,
+  snapshots: [],
   isSettingsOpen: false,
   isDiceRollerOpen: false,
   isAudioPlayerOpen: false,
+  isCommandPaletteOpen: false,
   audioUrl: '',
   toasts: [],
 };

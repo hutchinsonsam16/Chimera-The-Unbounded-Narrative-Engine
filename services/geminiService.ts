@@ -35,6 +35,21 @@ export async function* generateTextStream(prompt: string): AsyncGenerator<string
     }
 }
 
+export async function generateEnhancedPrompt(prompt: string): Promise<string> {
+    const modelName = useStore.getState().settings.engine.cloud.textModel;
+    const fullPrompt = `Rephrase the following first-person player action into a descriptive, third-person literary action. Only return the rephrased action, no other text.\n\nORIGINAL: "${prompt}"\n\nREPHRASED:`;
+     try {
+        const response = await ai.models.generateContent({
+            model: modelName,
+            contents: fullPrompt,
+        });
+        return response.text.trim();
+    } catch (error) {
+        console.error("Gemini prompt enhancement error:", error);
+        throw new Error("Failed to generate enhanced prompt from Gemini API.");
+    }
+}
+
 
 export const generateImage = async (prompt: string): Promise<string> => {
   const modelName = useStore.getState().settings.engine.cloud.imageModel;

@@ -6,9 +6,10 @@ import { Button } from '../ui/Button';
 import { PanelOrderManager } from './PanelOrderManager';
 import { GenerationService, Theme } from '../../types';
 import { toBase64 } from '../../lib/utils';
-import { localModelManager } from '../../services/localGenerationService';
 import { Input } from '../ui/Input';
 import { Textarea } from '../ui/Textarea';
+import { Tooltip } from '../ui/Tooltip';
+import { ModelSandbox } from './Sandbox';
 
 const EngineSettings: React.FC = () => {
     const settings = useStore(state => state.settings);
@@ -64,7 +65,7 @@ const EngineSettings: React.FC = () => {
                     <h4 className="font-semibold mb-2">Local Model Hub</h4>
                     <p className="text-sm text-gray-400 mb-3">Download models from Hugging Face to use locally.</p>
                     <div className="flex space-x-2">
-                        <Input value={modelUrl} onChange={e => setModelUrl(e.target.value)} placeholder="Enter Hugging Face model URL..."/>
+                        <Input value={modelUrl} onChange={e => setModelUrl(e.target.value)} placeholder="e.g., Xenova/phi-3-mini-4k-instruct"/>
                         <Button onClick={handleDownloadModel}>Download</Button>
                     </div>
                     {downloadProgress > 0 && downloadProgress < 100 && (
@@ -126,7 +127,27 @@ const StyleSettings: React.FC = () => {
 };
 
 const LayoutSettings: React.FC = () => {
-    return <PanelOrderManager />;
+    const visibility = useStore(state => state.settings.componentVisibility);
+    const setSettings = useStore(state => state.setSettings);
+    
+    const handleVisibilityChange = (key: keyof typeof visibility, value: boolean) => {
+        setSettings({ componentVisibility: { ...visibility, [key]: value } });
+    };
+
+    return (
+        <div className="space-y-6">
+            <PanelOrderManager />
+             <div>
+                <h4 className="text-md font-semibold text-gray-200 mb-2">UI Components</h4>
+                <div className="space-y-2">
+                     <label className="flex items-center space-x-3">
+                        <input type="checkbox" checked={visibility.resourceMonitor} onChange={e => handleVisibilityChange('resourceMonitor', e.target.checked)} className="rounded bg-gray-700 border-gray-600 text-sky-500 focus:ring-sky-600"/>
+                        <span className="text-sm text-gray-300">Show Resource Monitor</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const DangerZone: React.FC<{onClose: ()=>void}> = ({onClose}) => {
@@ -160,9 +181,9 @@ export const FullSettingsDialog: React.FC<FullSettingsDialogProps> = ({ onClose 
 
   const tabs = [
     { label: 'Engine', content: <EngineSettings /> },
+    { label: 'Sandbox', content: <ModelSandbox /> },
     { label: 'Layout', content: <LayoutSettings /> },
     { label: 'Style', content: <StyleSettings /> },
-    { label: 'Accessibility', content: <div>Accessibility settings coming soon.</div> },
     { label: 'Data', content: <DangerZone onClose={onClose} /> },
   ];
 

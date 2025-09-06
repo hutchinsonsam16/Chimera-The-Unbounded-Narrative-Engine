@@ -1,4 +1,3 @@
-
 export enum GamePhase {
   ONBOARDING = 'ONBOARDING',
   PLAYING = 'PLAYING',
@@ -12,6 +11,19 @@ export enum GenerationService {
 export enum LocalImageModelQuality {
   PERFORMANCE = 'performance',
   QUALITY = 'quality',
+}
+
+export interface Quest {
+  id: string;
+  title: string;
+  status: 'active' | 'completed' | 'failed';
+}
+
+export interface KnowledgeBaseEntry {
+  id: string;
+  name: string;
+  type: 'npc' | 'location' | 'item' | 'lore';
+  fields: { [key: string]: string };
 }
 
 export interface StoryLogEntry {
@@ -37,18 +49,26 @@ export interface NPC {
   name: string;
   description: string;
   relationship: string; // e.g., "Friendly", "Hostile", "Neutral"
+  imageUrl?: string;
+  imageUrlHistory?: { url: string; prompt: string }[];
+}
+
+export interface KnowledgeBase {
+    [id: string]: KnowledgeBaseEntry;
 }
 
 export interface World {
-  lore: string;
+  lore: string; // for narrative flavour and map locations
   npcs: NPC[];
+  knowledgeBase: KnowledgeBase;
 }
 
 export interface GameState {
   phase: GamePhase;
   isLoading: boolean;
   storyLog: StoryLogEntry[];
-  timeline: string[];
+  timeline: { id: string, description: string, timestamp: string }[];
+  quests: Quest[];
 }
 
 export type PanelType = 'character' | 'narrative' | 'context';
@@ -89,6 +109,9 @@ export interface Settings {
     panelOrder: PanelType[];
     panelSizes: number[];
   };
+  gameplay: {
+      promptAssist: boolean;
+  };
   componentVisibility: {
     character: {
       portrait: boolean;
@@ -103,6 +126,7 @@ export interface Settings {
       map: boolean;
       lore: boolean;
     };
+    resourceMonitor: boolean;
   };
   theme: Theme;
 }
@@ -119,11 +143,20 @@ export interface GameData {
     gameState: GameState;
 }
 
+export interface Snapshot {
+    id: string;
+    name: string;
+    createdAt: string;
+    data: GameData;
+}
+
 export interface AppState extends GameData {
   settings: Settings;
+  snapshots: Snapshot[];
   isSettingsOpen: boolean;
   isDiceRollerOpen: boolean;
   isAudioPlayerOpen: boolean;
+  isCommandPaletteOpen: boolean;
   audioUrl: string;
   toasts: Toast[];
   
@@ -141,12 +174,18 @@ export interface AppState extends GameData {
   toggleSettings: () => void;
   toggleDiceRoller: () => void;
   toggleAudioPlayer: () => void;
+  toggleCommandPalette: () => void;
   setAudioUrl: (url: string) => void;
   setPanelOrder: (order: PanelType[]) => void;
   setPanelSizes: (sizes: number[]) => void;
   setSettings: (settings: Partial<Settings>) => void;
   updateLogEntry: (id: string, newContent: string) => void;
   regenerateFrom: (id: string) => void;
+
+  // Snapshot Actions
+  createSnapshot: (name: string) => void;
+  loadSnapshot: (id: string) => void;
+  deleteSnapshot: (id: string) => void;
   
   // Toast Actions
   addToast: (message: string, type?: Toast['type']) => void;

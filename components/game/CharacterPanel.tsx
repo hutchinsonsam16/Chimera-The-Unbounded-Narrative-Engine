@@ -2,6 +2,7 @@ import React from 'react';
 import { useStore } from '../../hooks/useStore';
 import { Accordion } from '../ui/Accordion';
 import { Button } from '../ui/Button';
+import { Quest } from '../../types';
 
 const DataEntry: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex justify-between text-sm">
@@ -10,10 +11,25 @@ const DataEntry: React.FC<{ label: string; value: string }> = ({ label, value })
   </div>
 );
 
+const QuestList: React.FC<{ quests: Quest[], title: string }> = ({ quests, title }) => (
+    <>
+        <h4 className="font-semibold text-gray-400 text-xs uppercase tracking-wider mt-2 px-2">{title}</h4>
+        {quests.length > 0 ? (
+            <ul className="list-disc list-inside p-2 text-sm space-y-1">
+                {quests.map((quest) => <li key={quest.id}>{quest.title}</li>)}
+            </ul>
+        ) : <p className="text-xs text-gray-400 italic p-2">None.</p>}
+    </>
+);
+
 export const CharacterPanel: React.FC = () => {
   const character = useStore((state) => state.character);
+  const quests = useStore((state) => state.gameState.quests);
   const visibility = useStore((state) => state.settings.componentVisibility.character);
   const exportCharacterSheet = useStore(state => state.exportCharacterSheet);
+
+  const activeQuests = quests.filter(q => q.status === 'active');
+  const completedQuests = quests.filter(q => q.status === 'completed');
 
   return (
     <div className="bg-gray-800/50 h-full flex flex-col text-gray-200">
@@ -31,16 +47,19 @@ export const CharacterPanel: React.FC = () => {
         {visibility.status && (
             <Accordion title="Status" isOpenDefault>
                 <dl className="space-y-1 p-2">
-                    {/* FIX: Cast value to string to resolve type error. */}
                     {Object.entries(character.status).map(([key, value]) => <DataEntry key={key} label={key} value={value as string} />)}
                 </dl>
             </Accordion>
         )}
+
+         <Accordion title="Quests" isOpenDefault>
+            <QuestList quests={activeQuests} title="Active"/>
+            <QuestList quests={completedQuests} title="Completed"/>
+        </Accordion>
         
         {visibility.skills && (
              <Accordion title="Skills" isOpenDefault>
                 <dl className="space-y-1 p-2">
-                    {/* FIX: Cast value to string to resolve type error. */}
                     {Object.keys(character.skills).length > 0 ? Object.entries(character.skills).map(([key, value]) => <DataEntry key={key} label={key} value={value as string} />) : <p className="text-xs text-gray-400 italic p-2">No skills yet.</p>}
                 </dl>
             </Accordion>

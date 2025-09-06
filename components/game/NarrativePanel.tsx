@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { Spinner } from '../ui/Spinner';
 import { StoryLogEntry } from '../../types';
 import ReactMarkdown from 'react-markdown';
+import { Tooltip } from '../ui/Tooltip';
 
 const LogEntry: React.FC<{ entry: StoryLogEntry }> = ({ entry }) => {
     const [isEditing, setIsEditing] = useState(false);
@@ -29,9 +30,9 @@ const LogEntry: React.FC<{ entry: StoryLogEntry }> = ({ entry }) => {
     switch (entry.type) {
       case 'player':
         return (
-          <div className="group">
+          <div className="group ml-auto w-fit max-w-[80%] my-2">
             {isEditing ? (
-              <div className="border border-sky-500 rounded-md p-2">
+              <div className="border border-sky-500 rounded-md p-2 bg-gray-800">
                 <Textarea value={editedContent} onChange={e => setEditedContent(e.target.value)} rows={2} className="text-sky-300 italic"/>
                 <div className="flex justify-end space-x-2 mt-2">
                     <Button onClick={() => setIsEditing(false)} variant="secondary" size="sm">Cancel</Button>
@@ -40,30 +41,30 @@ const LogEntry: React.FC<{ entry: StoryLogEntry }> = ({ entry }) => {
                 </div>
               </div>
             ) : (
-                <div className="flex justify-between items-start">
-                    <p className="text-sky-300 italic flex-grow"> &gt; {entry.content}</p>
-                    <Button onClick={() => setIsEditing(true)} variant="secondary" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity ml-4">Edit</Button>
+                <div className="flex justify-end items-start bg-sky-900/50 rounded-lg rounded-br-none p-3 shadow">
+                    <p className="text-sky-200 italic flex-grow text-right">{entry.content}</p>
+                    <Button onClick={() => setIsEditing(true)} variant="secondary" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity ml-4 flex-shrink-0">Edit</Button>
                 </div>
             )}
           </div>
         );
       case 'narrative':
-        return <div className="text-gray-300 whitespace-pre-wrap prose prose-invert prose-sm max-w-none"><ReactMarkdown>{entry.content}</ReactMarkdown></div>;
+        return <div className="text-gray-300 whitespace-pre-wrap prose prose-invert prose-sm max-w-none leading-relaxed my-2"><ReactMarkdown>{entry.content}</ReactMarkdown></div>;
       case 'image':
         return (
-          <div className="my-2 p-2 bg-black/20 rounded-md">
-            <p className="text-sm text-gray-400 italic mb-2">Image prompt: {entry.prompt}</p>
+          <div className="my-4 p-3 bg-black/20 rounded-lg shadow-md flex flex-col items-center">
+            <p className="text-sm text-gray-400 italic mb-2 self-start">Image prompt: {entry.prompt}</p>
             {entry.content === 'generating...' ? (
-              <div className="flex items-center justify-center h-48 bg-gray-700 rounded"><Spinner/></div>
+              <div className="flex items-center justify-center h-48 w-full bg-gray-700 rounded"><Spinner/></div>
             ) : entry.content === 'Image generation failed.' ? (
-                <div className="flex items-center justify-center h-48 bg-gray-700 rounded text-red-400">{entry.content}</div>
+                <div className="flex items-center justify-center h-48 w-full bg-gray-700 rounded text-red-400">{entry.content}</div>
             ) : (
-              <img src={entry.content} alt={entry.prompt} className="rounded max-w-sm mx-auto" />
+              <img src={entry.content} alt={entry.prompt} className="rounded max-w-md w-full" />
             )}
           </div>
         );
       case 'system':
-         return <p className="text-xs text-center text-gray-500 py-2">--- {entry.content} ---</p>;
+         return <p className="text-xs text-center text-gray-500 py-3 my-2 border-t border-b border-gray-700/50">--- {entry.content} ---</p>;
       default:
         return null;
     }
@@ -73,6 +74,9 @@ export const NarrativePanel: React.FC = () => {
   const storyLog = useStore((state) => state.gameState.storyLog);
   const isLoading = useStore((state) => state.gameState.isLoading);
   const handlePlayerAction = useStore((state) => state.handlePlayerAction);
+  const createSnapshot = useStore(state => state.createSnapshot);
+  const settings = useStore(state => state.settings);
+  const setSettings = useStore(state => state.setSettings);
   const [playerInput, setPlayerInput] = useState('');
   const logEndRef = useRef<HTMLDivElement>(null);
   
@@ -92,9 +96,20 @@ export const NarrativePanel: React.FC = () => {
     }
   };
 
+  const handleSnapshot = () => {
+    const name = prompt("Enter a name for this story snapshot:", `Branch ${new Date().toLocaleTimeString()}`);
+    if (name) {
+      createSnapshot(name);
+    }
+  };
+  
+  const handlePromptAssistToggle = () => {
+      setSettings({ ...settings, gameplay: { ...settings.gameplay, promptAssist: !settings.gameplay.promptAssist }});
+  }
+
   return (
     <div className="bg-gray-900 h-full flex flex-col p-4">
-      <div className="flex-grow overflow-y-auto mb-4 pr-2 space-y-4">
+      <div className="flex-grow overflow-y-auto mb-4 pr-2 space-y-2">
         {storyLog.map(entry => (
           <div key={entry.id}><LogEntry entry={entry} /></div>
         ))}
@@ -116,8 +131,25 @@ export const NarrativePanel: React.FC = () => {
           className="pr-24"
         />
         <div className="absolute top-2 right-2 flex items-center space-x-2">
-            <Button onClick={undo} disabled={!canUndo || isLoading} variant="secondary" size="sm">Undo</Button>
-            <Button onClick={redo} disabled={!canRedo || isLoading} variant="secondary" size="sm">Redo</Button>
+            <Tooltip text="Create a savable branch of the story from this point.">
+                <Button onClick={handleSnapshot} disabled={isLoading} variant="secondary" size="sm">Snapshot</Button>
+            </Tooltip>
+            <Tooltip text="Undo last story change (Ctrl+Z)">
+                {/* FIX: Wrapped `undo` in an arrow function to match the expected event handler signature. */}
+                <Button onClick={() => undo()} disabled={!canUndo || isLoading} variant="secondary" size="sm">Undo</Button>
+            </Tooltip>
+             <Tooltip text="Redo last story change (Ctrl+Y)">
+                {/* FIX: Wrapped `redo` in an arrow function to match the expected event handler signature. */}
+                <Button onClick={() => redo()} disabled={!canRedo || isLoading} variant="secondary" size="sm">Redo</Button>
+            </Tooltip>
+        </div>
+        <div className="absolute bottom-2 left-2 flex items-center space-x-2">
+             <Tooltip text="When enabled, the AI will rephrase your input into a more literary prompt before generating the story. (Cloud AI only)">
+                <label className="flex items-center space-x-2 cursor-pointer text-xs text-gray-400">
+                    <input type="checkbox" checked={settings.gameplay.promptAssist} onChange={handlePromptAssistToggle} className="rounded bg-gray-700 border-gray-600 text-sky-500 focus:ring-sky-600"/>
+                    <span>Prompt Assist</span>
+                </label>
+            </Tooltip>
         </div>
         <div className="absolute bottom-2 right-2 flex items-center space-x-2">
             {isLoading && <Spinner/>}

@@ -21,13 +21,12 @@
 
 * **Node.js**: [Download and install Node.js](https://nodejs.org/) (LTS version recommended).
 * **Git**: [Download and install Git](https://git-scm.com/).
-* **Gemini API Key**: To use the cloud-based AI, you'll need a Google Gemini API key. You can get one from [Google AI Studio](https://ai.studio.google.com/).
 
-### Installation & Running Locally
+### Installation & Running
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/hutchinsonsam16/Chimera-The-Unbounded-Narrative-Engine
+    git clone <your-repository-url>
     cd chimera-narrative-engine
     ```
 
@@ -36,18 +35,50 @@
     npm install
     ```
 
-3.  **Set up your API Key:**
-    * Create a file named `.env.local` in the root of the project.
-    * Add your Gemini API key to this file:
-        ```
-        GEMINI_API_KEY="YOUR_API_KEY_HERE"
-        ```
+3.  **Choose your AI Engine:** You can run Chimera in two modes: Cloud or Local.
+
+    * **Cloud Mode (Recommended for Quality):**
+        * Create a file named `.env.local` in the root of the project.
+        * Add your Gemini API key to this file. You can get one from [Google AI Studio](https://ai.studio.google.com/).
+            ```
+            GEMINI_API_KEY="YOUR_API_KEY_HERE"
+            ```
+
+    * **Local Mode (Offline & Private):**
+        * No API key is needed.
+        * See the section below for recommended models and instructions.
 
 4.  **Run the application in development mode:**
     ```bash
     npm run dev
     ```
-    This will start the application with hot-reloading for development.
+
+## 🧠 Running with Local AI Models (Offline & Private)
+
+Chimera can run AI models directly on your machine for 100% privacy and offline capability. This requires downloading models, which can be done from the **Local Model Hub** in the application's settings.
+
+**Please Note:** Local models are significantly less powerful than cloud-based models like Gemini. Performance will depend heavily on your computer's hardware.
+
+### Recommended Local Models
+
+* **Text Generation (for Roleplaying):**
+    * **Model:** `Xenova/phi-3-mini-4k-instruct`
+    * **Why:** This model offers one of the best balances between coherent, creative text generation and low resource usage. It is designed to run effectively on machines with as little as 4GB of RAM.
+
+* **Image Generation (CPU-Only):**
+    * **Important Caveat:** Generating "photo-realistic" images on a low-spec, CPU-only machine is not currently feasible. The models below will produce stylized or basic images and will be slow.
+    * **Performance Model:** `Xenova/TinySD` - Very fast for a local model, but images can be less detailed.
+    * **Quality Model:** `Xenova/stable-diffusion-2-1-base` - Capable of producing more detailed images, but will be **very slow** on CPU and may struggle on systems with low RAM.
+
+### How to Use Local Models
+
+1.  Launch the Chimera application.
+2.  Open **Settings -> Engine**.
+3.  Switch the "Generation Service" to **Local (In-Browser)**.
+4.  Navigate to the **Local Model Hub**.
+5.  Find the input field and enter the model name you wish to download (e.g., `Xenova/phi-3-mini-4k-instruct`).
+6.  Click "Download." A progress bar will appear.
+7.  Once downloaded, you can select the model from the dropdown menus for text and image generation.
 
 ## 📦 Building the Application
 
@@ -56,11 +87,4 @@ To build the application as a standalone executable for your operating system:
 ```bash
 npm run build
 ```
-
-This will generate the necessary files in the `dist` directory, which can then be packaged into an installer.
-
-*(Note: Full `electron-builder` configuration for creating distributable installers for Windows, macOS, and Linux should be added here once the CI/CD pipeline is in place.)*
-
-## 🤝 How It Works
-
-Chimera uses a sophisticated prompt engineering strategy. On each turn, it sends the entire game state (your character, the world lore, recent events) along with your action to the AI. The AI then returns a response containing both the narrative text and a series of machine-readable tags that the application uses to update the game state, creating a seamless, interactive loop.
+This will generate the necessary files in the `dist` directory.

@@ -1,9 +1,8 @@
-
-import type { StateCreator, StoreApi } from 'zustand';
-import { temporal, TemporalState } from 'zundo';
-import { AppState, GamePhase, NPC, PanelType, Settings, StoryLogEntry, GameData, Toast } from '../types';
+import type { StateCreator } from 'zustand';
+import { temporal } from 'zundo';
+import { AppState, GamePhase, NPC, PanelType, Settings, StoryLogEntry, GameData, Toast, Quest, KnowledgeBaseEntry, Snapshot } from '../types';
 import { INITIAL_STATE, INITIAL_GAME_DATA } from '../constants';
-import { generateTextStream, generateImage } from '../services/geminiService';
+import { generateTextStream, generateImage, generateEnhancedPrompt } from '../services/geminiService';
 import { generateLocalText, generateLocalImage } from '../services/localGenerationService';
 import { nanoid } from 'nanoid';
 import JSZip from 'jszip';
@@ -19,6 +18,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
   toggleSettings: () => set((state) => ({ isSettingsOpen: !state.isSettingsOpen })),
   toggleDiceRoller: () => set(state => ({ isDiceRollerOpen: !state.isDiceRollerOpen })),
   toggleAudioPlayer: () => set(state => ({ isAudioPlayerOpen: !state.isAudioPlayerOpen })),
+  toggleCommandPalette: () => set(state => ({ isCommandPaletteOpen: !state.isCommandPaletteOpen })),
   setAudioUrl: (url: string) => set({ audioUrl: url }),
 
   setPanelOrder: (order: PanelType[]) => set((state) => ({ settings: { ...state.settings, layout: { ...state.settings.layout, panelOrder: order } } })),
@@ -66,20 +66,33 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
   handlePlayerAction: async (action: string) => {
     if (get().gameState.isLoading) return;
 
+    let finalAction = action;
+    const { settings } = get();
+
+    if (settings.gameplay.promptAssist && settings.engine.service === 'cloud') {
+        try {
+            finalAction = await generateEnhancedPrompt(action);
+            get().addToast(`Used enhanced prompt: "${finalAction}"`, 'info');
+        } catch (e) {
+            console.error("Prompt assist failed:", e);
+            get().addToast("Prompt assist failed. Using original prompt.", 'error');
+        }
+    }
+
     set(state => ({
       gameState: {
         ...state.gameState,
         isLoading: true,
         storyLog: [
           ...state.gameState.storyLog,
-          { id: nanoid(), type: 'player', content: action, timestamp: new Date().toISOString() },
+          { id: nanoid(), type: 'player', content: action, timestamp: new Date().toISOString() }, // Log the original action
         ],
       },
     }));
 
-    const { settings, character, world, gameState } = get();
+    const { character, world, gameState } = get();
     
-    const fullPrompt = `GAME STATE:\nCharacter: ${JSON.stringify(character)}\nWorld: ${JSON.stringify(world)}\nTimeline: ${JSON.stringify(gameState.timeline)}\nLatest Events: ${gameState.storyLog.slice(-5).map(e => `${e.type}: ${e.content}`).join('\n')}\n\nPLAYER ACTION: "${action}"`;
+    const fullPrompt = `GAME STATE:\nCharacter: ${JSON.stringify(character)}\nWorld: ${JSON.stringify(world)}\nTimeline: ${JSON.stringify(gameState.timeline)}\nQuests: ${JSON.stringify(gameState.quests)}\nLatest Events: ${gameState.storyLog.slice(-5).map(e => `${e.type}: ${e.content}`).join('\n')}\n\nPLAYER ACTION: "${finalAction}"`;
 
     try {
       if (settings.engine.service === 'cloud') {
@@ -130,40 +143,76 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
 
   parseAndApplyTags: async (rawResponse: string): Promise<string> => {
     let narrativeText = rawResponse;
-    const tagRegex = /<([a-zA-Z_]+)([^>]*)>([\s\S]*?)<\/\1>/g;
+    const tagRegex = /<([a-zA-Z_]+)([^>]*)>([\s\S]*?)<\/\1>|<([a-zA-Z_]+)([^>]*)\/>/g;
     let match;
     const imagePromises: Promise<void>[] = [];
+    let significantChange = false;
+
+    const getAttrs = (attrStr: string): { [key: string]: string } => {
+        const attributes: { [key:string]: string } = {};
+        const attrRegex = /(\w+)="([^"]*)"/g;
+        let attrMatch;
+        while ((attrMatch = attrRegex.exec(attrStr)) !== null) {
+            attributes[attrMatch[1]] = attrMatch[2];
+        }
+        return attributes;
+    };
 
     while ((match = tagRegex.exec(rawResponse)) !== null) {
-      const [fullMatch, tagName, attrs, content] = match;
+      const [fullMatch, tagName, attrs, content, selfClosingTagName, selfClosingAttrs] = match;
       narrativeText = narrativeText.replace(fullMatch, '').trim();
 
-      const getAttrs = (attrStr: string): { [key: string]: string } => {
-          const attributes: { [key: string]: string } = {};
-          const attrRegex = /(\w+)="([^"]*)"/g;
-          let attrMatch;
-          while ((attrMatch = attrRegex.exec(attrStr)) !== null) {
-              attributes[attrMatch[1]] = attrMatch[2];
-          }
-          return attributes;
-      };
-
-      const attributes = getAttrs(attrs);
-
-      switch (tagName) {
-        case 'char_name': set(state => ({ character: { ...state.character, name: content } })); break;
-        case 'char_backstory': set(state => ({ character: { ...state.character, backstory: content } })); break;
-        case 'char_skill_add': if (attributes.key) set(state => ({ character: { ...state.character, skills: { ...state.character.skills, [attributes.key]: content } } })); break;
+      const currentTagName = tagName || selfClosingTagName;
+      const currentAttrs = attrs || selfClosingAttrs;
+      const currentContent = content || '';
+      const attributes = getAttrs(currentAttrs);
+      
+      switch (currentTagName) {
+        case 'char_name': set(state => ({ character: { ...state.character, name: currentContent } })); break;
+        case 'char_backstory': set(state => ({ character: { ...state.character, backstory: currentContent } })); break;
+        case 'char_skill_add': if (attributes.key) set(state => ({ character: { ...state.character, skills: { ...state.character.skills, [attributes.key]: currentContent } } })); break;
         case 'char_skill_remove': if (attributes.key) set(state => { const newSkills = { ...state.character.skills }; delete newSkills[attributes.key]; return { character: { ...state.character, skills: newSkills } }; }); break;
-        case 'char_inventory_add': set(state => ({ character: { ...state.character, inventory: [...new Set([...state.character.inventory, content])] } })); break;
-        case 'char_inventory_remove': set(state => ({ character: { ...state.character, inventory: state.character.inventory.filter(item => item !== content) } })); break;
-        case 'char_status_update': if (attributes.key) set(state => ({ character: { ...state.character, status: { ...state.character.status, [attributes.key]: content } } })); break;
-        case 'world_lore': set(state => ({ world: { ...state.world, lore: state.world.lore + '\n\n' + content } })); break;
-        case 'add_npc': try { const npc = JSON.parse(content) as NPC; set(state => ({ world: { ...state.world, npcs: [...state.world.npcs, npc] } })); } catch (e) { console.error('Failed to parse NPC JSON:', content); } break;
-        case 'update_npc': if (attributes.id) try { const updates = JSON.parse(content); set(state => ({ world: { ...state.world, npcs: state.world.npcs.map(npc => npc.id === attributes.id ? { ...npc, ...updates } : npc) } })); } catch (e) { console.error('Failed to parse NPC update JSON:', content); } break;
+        case 'char_inventory_add': set(state => ({ character: { ...state.character, inventory: [...new Set([...state.character.inventory, currentContent])] } })); significantChange = true; break;
+        case 'char_inventory_remove': set(state => ({ character: { ...state.character, inventory: state.character.inventory.filter(item => item !== currentContent) } })); significantChange = true; break;
+        case 'char_status_update': if (attributes.key) { set(state => ({ character: { ...state.character, status: { ...state.character.status, [attributes.key]: currentContent } } })); significantChange = true; } break;
+        case 'world_lore': set(state => ({ world: { ...state.world, lore: state.world.lore + '\n\n' + currentContent } })); break;
+        case 'add_npc': try { const npc = JSON.parse(currentContent) as NPC; set(state => ({ world: { ...state.world, npcs: [...state.world.npcs, npc] } })); } catch (e) { console.error('Failed to parse NPC JSON:', currentContent); } break;
+        case 'update_npc': if (attributes.id) try { const updates = JSON.parse(currentContent); set(state => ({ world: { ...state.world, npcs: state.world.npcs.map(npc => npc.id === attributes.id ? { ...npc, ...updates } : npc) } })); } catch (e) { console.error('Failed to parse NPC update JSON:', currentContent); } break;
+        
+        // New V2 Tags
+        case 'quest_add': if(attributes.title) { const newQuest: Quest = { id: nanoid(), title: attributes.title, status: 'active'}; set(state => ({ gameState: { ...state.gameState, quests: [...state.gameState.quests, newQuest] }})); } break;
+        case 'quest_update': if(attributes.id && attributes.status) { set(state => ({ gameState: { ...state.gameState, quests: state.gameState.quests.map(q => q.id === attributes.id ? {...q, status: attributes.status as Quest['status']} : q)}})); } break;
+        case 'quest_remove': if(attributes.id) { set(state => ({ gameState: { ...state.gameState, quests: state.gameState.quests.filter(q => q.id !== attributes.id) }}));} break;
+        case 'timeline_event': set(state => ({ gameState: { ...state.gameState, timeline: [...state.gameState.timeline, { id: nanoid(), description: currentContent, timestamp: new Date().toISOString() }] }})); break;
+        case 'kb_entry': 
+            if (attributes.name && attributes.type && attributes.fields) {
+                try {
+                    const fields = JSON.parse(attributes.fields.replace(/'/g, '"'));
+                    const id = nanoid();
+                    const newEntry: KnowledgeBaseEntry = { id, name: attributes.name, type: attributes.type as KnowledgeBaseEntry['type'], fields };
+                    set(state => ({ world: { ...state.world, knowledgeBase: {...state.world.knowledgeBase, [id]: newEntry }}}));
+                    if (newEntry.type === 'location') {
+                        set(state => ({ world: { ...state.world, lore: `${state.world.lore}\n[Location: ${newEntry.name}]` }}));
+                    }
+                } catch (e) { console.error("Failed to parse kb_entry fields JSON:", attributes.fields); }
+            }
+            break;
+        case 'gen_npc_image':
+            if (attributes.id && attributes.prompt) {
+                const { id: npcId, prompt: npcPrompt } = attributes;
+                const promise = (async () => {
+                    try {
+                        const b64Image = await generateImage(npcPrompt);
+                        const imageUrl = `data:image/jpeg;base64,${b64Image}`;
+                        set(state => ({ world: { ...state.world, npcs: state.world.npcs.map(npc => npc.id === npcId ? { ...npc, imageUrl, imageUrlHistory: [...(npc.imageUrlHistory || []), { url: imageUrl, prompt: npcPrompt }] } : npc ) }}));
+                    } catch (e) { console.error(`Failed to generate image for NPC ${npcId}:`, e); get().addToast(`Image generation failed for NPC.`, 'error'); }
+                })();
+                imagePromises.push(promise);
+            }
+            break;
         case 'gen_image': case 'gen_char_image':
-            const isCharImage = tagName === 'gen_char_image';
-            const imagePrompt = content;
+            const isCharImage = currentTagName === 'gen_char_image';
+            const imagePrompt = currentContent;
             const placeholderId = nanoid();
             const placeholderEntry: StoryLogEntry = { id: placeholderId, type: 'image', content: 'generating...', prompt: imagePrompt, timestamp: new Date().toISOString() };
             if (!isCharImage) { set(state => ({ gameState: { ...state.gameState, storyLog: [...state.gameState.storyLog, placeholderEntry] }})); }
@@ -186,6 +235,20 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
         }
     }
     await Promise.all(imagePromises);
+    if(significantChange && get().settings.engine.service === 'cloud'){
+        const { character } = get();
+        const autoPrompt = `Full body portrait of ${character.name}, a character whose status is ${JSON.stringify(character.status)}. They are carrying: ${character.inventory.join(', ')}.`;
+         const promise = (async () => {
+            try {
+                const b64Image = await generateImage(autoPrompt);
+                const imageUrl = `data:image/jpeg;base64,${b64Image}`;
+                set(state => ({ character: { ...state.character, imageUrl, imageUrlHistory: [...state.character.imageUrlHistory, { url: imageUrl, prompt: autoPrompt }] }}));
+                get().addToast('Character portrait updated due to state change.', 'info');
+            } catch (e) { console.error("Auto-portrait generation failed:", e); }
+        })();
+        imagePromises.push(promise);
+    }
+    
     return narrativeText;
   },
 
@@ -206,23 +269,48 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
           return;
       }
 
-      // Truncate the log
       const newStoryLog = storyLog.slice(0, entryIndex);
       const actionToRegen = storyLog[entryIndex].content;
       
-      // Need a way to revert state to this point. The undo/redo history is perfect.
-      // This is a complex operation that requires careful state time-travel.
-      // For now, we just re-run the action from the current state.
-      // A more robust implementation would use state snapshots.
       set(state => ({
           gameState: { ...state.gameState, storyLog: newStoryLog }
       }));
       get().handlePlayerAction(actionToRegen);
   },
+  
+  createSnapshot: (name) => {
+      const { character, world, gameState } = get();
+      const gameData: GameData = { character, world, gameState: { ...gameState, isLoading: false } };
+      const newSnapshot: Snapshot = {
+          id: nanoid(),
+          name,
+          createdAt: new Date().toISOString(),
+          data: JSON.parse(JSON.stringify(gameData)) // Deep copy
+      };
+      set(state => ({ snapshots: [...state.snapshots, newSnapshot]}));
+      get().addToast(`Snapshot "${name}" created!`, "success");
+  },
+
+  loadSnapshot: (id) => {
+      const snapshot = get().snapshots.find(s => s.id === id);
+      if (snapshot) {
+          set({ ...snapshot.data });
+           const { clear } = (get() as any).temporal.getState();
+           clear();
+          get().addToast(`Snapshot "${snapshot.name}" loaded!`, "success");
+      } else {
+          get().addToast("Snapshot not found.", "error");
+      }
+  },
+
+  deleteSnapshot: (id) => {
+      set(state => ({ snapshots: state.snapshots.filter(s => s.id !== id) }));
+      get().addToast("Snapshot deleted.", "info");
+  },
 
   saveGame: () => {
-    const { character, world, gameState } = get();
-    const saveState = { version: '1.0.0', savedAt: new Date().toISOString(), character, world, gameState: { ...gameState, isLoading: false } };
+    const { character, world, gameState, snapshots } = get();
+    const saveState = { version: '2.0.0', savedAt: new Date().toISOString(), character, world, gameState: { ...gameState, isLoading: false }, snapshots };
     const blob = new Blob([JSON.stringify(saveState, null, 2)], { type: 'application/json' });
     FileSaver.saveAs(blob, `chimera-save-${Date.now()}.json`);
     get().addToast("Game Saved!", "success");
@@ -234,7 +322,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
       try {
         const savedData = JSON.parse(event.target?.result as string);
         if (savedData.version && savedData.character && savedData.world && savedData.gameState) {
-            set({ character: savedData.character, world: savedData.world, gameState: { ...savedData.gameState, phase: GamePhase.PLAYING } });
+            set({ character: savedData.character, world: savedData.world, gameState: { ...savedData.gameState, phase: GamePhase.PLAYING }, snapshots: savedData.snapshots || [] });
             get().addToast("Game Loaded Successfully!", "success");
         } else { throw new Error("Invalid save file format."); }
       } catch (e) {
@@ -291,21 +379,29 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
     try {
         const { character, world, gameState, settings } = get();
         const zip = new JSZip();
-        zip.file('save.json', JSON.stringify({ version: '1.0.0', character, world, gameState, settings }, null, 2));
+        zip.file('save.json', JSON.stringify({ version: '2.0.0', character, world, gameState, settings }, null, 2));
 
         const imagePrompts: string[] = [];
         const imageFolder = zip.folder('images');
         let imageCounter = 1;
 
-        const addImageToZip = async (url: string, prompt: string) => {
-            if (!url.startsWith('data:image')) return;
+        const addImageToZip = async (url: string, prompt: string, name: string) => {
+            if (!url || !url.startsWith('data:image')) return;
             const b64data = url.split(',')[1];
-            imagePrompts.push(`image_${imageCounter}.jpg: ${prompt}`);
-            imageFolder?.file(`image_${imageCounter}.jpg`, b64data, { base64: true });
+            const fileName = `${name}_${imageCounter}.jpg`;
+            imagePrompts.push(`${fileName}: ${prompt}`);
+            imageFolder?.file(fileName, b64data, { base64: true });
             imageCounter++;
         };
-
-        for (const img of character.imageUrlHistory) { await addImageToZip(img.url, img.prompt); }
+        
+        for (const img of character.imageUrlHistory) { await addImageToZip(img.url, img.prompt, character.name.replace(/\s+/g, '_')); }
+        for (const npc of world.npcs) {
+            if (npc.imageUrlHistory) {
+                for (const img of npc.imageUrlHistory) {
+                    await addImageToZip(img.url, img.prompt, npc.name.replace(/\s+/g, '_'));
+                }
+            }
+        }
 
         const pdf = new jsPDF();
         pdf.setFont("Helvetica");
@@ -317,12 +413,12 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
         yPos += 10;
 
         for (const entry of gameState.storyLog) {
-             const content = entry.content.startsWith('data:image') ? `(See image_${imageCounter}.jpg)` : entry.content;
+             const content = entry.content.startsWith('data:image') ? `(See images folder for image with prompt: ${entry.prompt})` : entry.content;
              const textLines = pdf.splitTextToSize(`[${entry.type}] ${content}`, 180);
              if (yPos + (textLines.length * 7) > pageHeight) { pdf.addPage(); yPos = 15; }
              pdf.text(textLines, 10, yPos);
              yPos += textLines.length * 7 + 5;
-             if (entry.type === 'image' && entry.content.startsWith('data:image')) { await addImageToZip(entry.content, entry.prompt || 'N/A'); }
+             if (entry.type === 'image' && entry.content.startsWith('data:image')) { await addImageToZip(entry.content, entry.prompt || 'N/A', 'narrative'); }
         }
         
         zip.file('prompts.txt', imagePrompts.join('\n'));
