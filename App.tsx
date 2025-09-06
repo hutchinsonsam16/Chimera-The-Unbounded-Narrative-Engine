@@ -11,6 +11,7 @@ import { CommandPalette } from './components/ui/CommandPalette';
 import { ExportFormatModal } from './components/game/ExportFormatModal';
 import { ImageEditorModal } from './components/game/ImageEditorModal';
 import { InteractiveTutorial } from './components/game/InteractiveTutorial';
+import { ApiKeyModal } from './components/ApiKeyModal';
 
 const ThemeManager: React.FC = () => {
   const theme = useStore((state) => state.settings.theme);
@@ -75,8 +76,18 @@ const App: React.FC = () => {
   const isImageEditorOpen = useStore(state => state.isImageEditorOpen);
   const hasCompletedTutorial = useStore(state => state.settings.hasCompletedTutorial);
 
+  const service = useStore(state => state.settings.engine.service);
+  const apiKeyStatus = useStore(state => state.apiKeyStatus);
+  const validateApiKey = useStore(state => state.validateApiKey);
+  
   const isWounded = healthStatus?.toLowerCase().includes('wounded') || healthStatus?.toLowerCase().includes('injured');
   const showTutorial = gamePhase === GamePhase.PLAYING && !hasCompletedTutorial;
+
+  useEffect(() => {
+    if (service === 'cloud' && apiKeyStatus === 'unvalidated') {
+      validateApiKey();
+    }
+  }, [service, apiKeyStatus, validateApiKey]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -92,20 +103,24 @@ const App: React.FC = () => {
     };
   }, [toggleCommandPalette]);
 
+  const showApiKeyModal = service === 'cloud' && (apiKeyStatus === 'invalid' || apiKeyStatus === 'validating');
+  const showApp = apiKeyStatus === 'valid' || service === 'local';
+
   return (
     <>
       <ThemeManager />
       <ToastContainer />
       <div className={`bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)] h-screen w-screen overflow-hidden flex flex-col transition-all duration-500 ${isWounded ? 'low-health-effect' : ''}`}>
-        {gamePhase === GamePhase.ONBOARDING && <OnboardingWizard />}
-        {gamePhase === GamePhase.PLAYING && <GameUI />}
+        {showApiKeyModal && <ApiKeyModal />}
+        {showApp && gamePhase === GamePhase.ONBOARDING && <OnboardingWizard />}
+        {showApp && gamePhase === GamePhase.PLAYING && <GameUI />}
         {isSettingsOpen && <FullSettingsDialog onClose={toggleSettings} />}
         {isCommandPaletteOpen && <CommandPalette />}
         {isExportModalOpen && <ExportFormatModal />}
         {isImageEditorOpen.open && <ImageEditorModal logEntryId={isImageEditorOpen.logEntryId!} />}
         {isDiceRollerOpen && <DiceRoller />}
         {isAudioPlayerOpen && <AmbientAudioPlayer />}
-        {showTutorial && <InteractiveTutorial />}
+        {showApp && showTutorial && <InteractiveTutorial />}
       </div>
        <style>{`
             .low-health-effect {

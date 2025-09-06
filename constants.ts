@@ -1,4 +1,4 @@
-import { Settings, GamePhase, GenerationService, LocalImageModelQuality, PanelType, GameData, Persona } from './types';
+import { Settings, GamePhase, GenerationService, LocalImageModelQuality, PanelType, GameData, Persona, ApiKeyStatus } from './types';
 import { nanoid } from 'nanoid';
 
 // FIX: Converted template literal to a regular string to avoid parsing issues. The parser was incorrectly interpreting the string's content as code.
@@ -150,4 +150,7 @@ export const INITIAL_STATE = {
   isImageEditorOpen: { open: false, logEntryId: null },
   audioUrl: '',
   toasts: [],
+  // FIX: Explicitly cast apiKeyStatus to the ApiKeyStatus type to prevent TypeScript from widening it to a generic string.
+  apiKeyStatus: 'unvalidated' as ApiKeyStatus,
+  apiKey: null,
 };

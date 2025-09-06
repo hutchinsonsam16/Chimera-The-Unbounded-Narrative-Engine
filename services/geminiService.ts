@@ -1,18 +1,60 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { useStore } from '../hooks/useStore';
 
-// The API key is injected via environment variables.
-const API_KEY = process.env.API_KEY;
+let ai: GoogleGenAI | null = null;
+let userProvidedKey: string | null = null;
 
-if (!API_KEY) {
-  // In a real app, you'd want to handle this more gracefully.
-  // For this context, we assume it's always provided.
-  console.warn("API_KEY environment variable not set. Gemini API calls will fail.");
-}
+// This will be called by the store to set a user-entered key
+export const setUserProvidedApiKey = (key: string | null) => {
+    userProvidedKey = key;
+    ai = null; // Force re-initialization on next call
+};
 
-const ai = new GoogleGenAI({ apiKey: API_KEY! });
+// This is the singleton getter
+const getGenAIClient = (): GoogleGenAI | null => {
+    if (ai) {
+        return ai;
+    }
+    
+    const key = userProvidedKey || process.env.API_KEY;
+
+    if (key) {
+        try {
+            ai = new GoogleGenAI({ apiKey: key });
+            return ai;
+        } catch (e) {
+            console.error("Failed to initialize GoogleGenAI:", e);
+            ai = null; // Ensure ai is null on failure
+            return null;
+        }
+    }
+    
+    return null;
+};
+
+export const verifyApiKey = async (key: string): Promise<boolean> => {
+    try {
+        const testClient = new GoogleGenAI({ apiKey: key });
+        // Perform a lightweight, low-cost operation to confirm validity.
+        await testClient.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: 'test',
+            config: {
+                maxOutputTokens: 1,
+            },
+        });
+        return true;
+    } catch (error) {
+        console.error("API Key validation failed:", error);
+        return false;
+    }
+};
+
 
 export async function* generateTextStream(prompt: string): AsyncGenerator<string> {
+    const client = getGenAIClient();
+    if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
+
     const state = useStore.getState();
     const modelName = state.settings.engine.cloud.textModel;
     
@@ -20,7 +62,7 @@ export async function* generateTextStream(prompt: string): AsyncGenerator<string
     const systemInstruction = activePersona ? activePersona.prompt : "You are a helpful AI assistant.";
 
     try {
-        const response = await ai.models.generateContentStream({
+        const response = await client.models.generateContentStream({
             model: modelName,
             contents: prompt,
             config: {
@@ -38,10 +80,13 @@ export async function* generateTextStream(prompt: string): AsyncGenerator<string
 }
 
 export async function generateEnhancedPrompt(prompt: string): Promise<string> {
+    const client = getGenAIClient();
+    if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
+
     const modelName = useStore.getState().settings.engine.cloud.textModel;
     const fullPrompt = `Rephrase the following first-person player action into a descriptive, third-person literary action. Only return the rephrased action, no other text.\n\nORIGINAL: "${prompt}"\n\nREPHRASED:`;
      try {
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model: modelName,
             contents: fullPrompt,
         });
@@ -53,10 +98,13 @@ export async function generateEnhancedPrompt(prompt: string): Promise<string> {
 }
 
 export const generateImage = async (prompt: string, modelNameOverride?: string): Promise<string> => {
+  const client = getGenAIClient();
+  if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
+    
   const modelName = modelNameOverride || useStore.getState().settings.engine.cloud.imageModel;
   
   try {
-    const response = await ai.models.generateImages({
+    const response = await client.models.generateImages({
         model: modelName,
         prompt: prompt,
         config: {
@@ -79,11 +127,14 @@ export const generateImage = async (prompt: string, modelNameOverride?: string):
 
 
 export const suggestActionFromContext = async (context: string): Promise<string[]> => {
+    const client = getGenAIClient();
+    if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
+
     const modelName = useStore.getState().settings.engine.cloud.textModel;
     const prompt = `Given the following game context, suggest 1-3 creative and relevant actions or lines of dialogue for the player character. The suggestions should be in the character's voice.\n\nCONTEXT:\n${context}\n\nSUGGESTIONS:`;
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model: modelName,
             contents: prompt,
             config: {
@@ -108,21 +159,22 @@ export const suggestActionFromContext = async (context: string): Promise<string[
 };
 
 export const editImageWithMask = async (prompt: string, imageBase64: string, maskBase64?: string): Promise<{image: string, text: string}> => {
-    // This model is specifically for image editing tasks
+    const client = getGenAIClient();
+    if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
+
     const modelName = 'gemini-2.5-flash-image-preview';
 
     const imagePart = { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } };
     const textPart = { text: prompt };
     
     const parts = [imagePart, textPart];
-    // Inpainting requires a mask
     if (maskBase64) {
         const maskPart = { inlineData: { mimeType: 'image/png', data: maskBase64 }};
-        parts.splice(1, 0, maskPart); // Insert mask between image and prompt
+        parts.splice(1, 0, maskPart);
     }
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model: modelName,
             contents: { parts },
             config: {
@@ -154,13 +206,16 @@ export const editImageWithMask = async (prompt: string, imageBase64: string, mas
 
 
 export const generateOnboardingFromImage = async (imageBase64: string): Promise<{name: string, backstory: string, openingPrompt: string}> => {
+    const client = getGenAIClient();
+    if (!client) throw new Error("Gemini client not initialized. API Key may be missing or invalid.");
+    
     const modelName = useStore.getState().settings.engine.cloud.textModel;
 
     const imagePart = { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } };
     const textPart = { text: "Analyze this character portrait. Based on their appearance, invent a creative character name, a short, compelling backstory (2-3 sentences), and an exciting opening story prompt for a fantasy RPG." };
     
     try {
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model: modelName,
             contents: { parts: [imagePart, textPart] },
             config: {

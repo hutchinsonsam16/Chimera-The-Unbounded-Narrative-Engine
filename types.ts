@@ -172,6 +172,8 @@ export interface Snapshot {
 
 export type ExportFormat = 'zip' | 'txt' | 'html';
 
+export type ApiKeyStatus = 'unvalidated' | 'validating' | 'valid' | 'invalid';
+
 export interface AppState extends GameData {
   settings: Settings;
   snapshots: Snapshot[];
@@ -184,6 +186,8 @@ export interface AppState extends GameData {
   isImageEditorOpen: { open: boolean, logEntryId: string | null };
   audioUrl: string;
   toasts: Toast[];
+  apiKeyStatus: ApiKeyStatus;
+  apiKey: string | null;
   
   // Actions
   handlePlayerAction: (action: string) => Promise<void>;
@@ -231,4 +235,9 @@ export interface AppState extends GameData {
 
   // Tutorial Actions
   completeTutorial: () => void;
+
+  // API Key Actions
+  validateApiKey: (key?: string) => Promise<void>;
+  switchToLocalMode: () => void;
+  setUserApiKey: (key: string) => void;
 }

@@ -1,8 +1,8 @@
 import type { StateCreator } from 'zustand';
 import { temporal } from 'zundo';
-import { AppState, GamePhase, NPC, PanelType, Settings, StoryLogEntry, GameData, Toast, Quest, KnowledgeBaseEntry, Snapshot, Persona, ExportFormat, ImageGenerationContext } from '../types';
+import { AppState, GamePhase, NPC, PanelType, Settings, StoryLogEntry, GameData, Toast, Quest, KnowledgeBaseEntry, Snapshot, Persona, ExportFormat, ImageGenerationContext, GenerationService } from '../types';
 import { INITIAL_STATE, INITIAL_GAME_DATA } from '../constants';
-import { generateTextStream, generateImage, generateEnhancedPrompt, suggestActionFromContext, editImageWithMask, generateOnboardingFromImage } from '../services/geminiService';
+import { generateTextStream, generateImage, generateEnhancedPrompt, suggestActionFromContext, editImageWithMask, generateOnboardingFromImage, verifyApiKey, setUserProvidedApiKey } from '../services/geminiService';
 import { generateLocalText, generateLocalImage } from '../services/localGenerationService';
 import { nanoid } from 'nanoid';
 import JSZip from 'jszip';
@@ -33,6 +33,40 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
       setTimeout(() => get().removeToast(newToast.id), 5000);
   },
   removeToast: (id) => set(state => ({ toasts: state.toasts.filter(t => t.id !== id) })),
+
+  // API Key Actions
+  setUserApiKey: (key: string) => {
+      set({ apiKey: key });
+      setUserProvidedApiKey(key);
+  },
+  validateApiKey: async (key?: string) => {
+      set({ apiKeyStatus: 'validating' });
+      const keyToValidate = key || get().apiKey || process.env.API_KEY;
+
+      if (!keyToValidate) {
+          set({ apiKeyStatus: 'invalid' });
+          return;
+      }
+
+      const isValid = await verifyApiKey(keyToValidate);
+
+      if (isValid) {
+          get().setUserApiKey(keyToValidate);
+          set({ apiKeyStatus: 'valid' });
+          get().addToast("API Key is valid!", 'success');
+      } else {
+          setUserProvidedApiKey(null);
+          set({ apiKey: null, apiKeyStatus: 'invalid' });
+          get().addToast("API Key is invalid or has failed.", 'error');
+      }
+  },
+  switchToLocalMode: () => {
+      set(state => ({
+          settings: { ...state.settings, engine: { ...state.settings.engine, service: GenerationService.LOCAL } }
+      }));
+      set({ apiKeyStatus: 'valid' }); // 'valid' here means the validation process is complete.
+      get().addToast("Switched to Local AI mode.", 'info');
+  },
 
   // Game Logic Actions
   restartGame: () => {
@@ -178,7 +212,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
       set(state => ({ credits: state.credits - cost }));
     } catch (error) {
       console.error("Error generating response:", error);
-      get().addToast("Error: Could not get a response from the AI.", 'error');
+      get().addToast(`Error: ${(error as Error).message}`, 'error');
     } finally {
       set(state => ({ gameState: { ...state.gameState, isLoading: false } }));
     }
@@ -291,7 +325,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
                     set(state => ({ credits: state.credits - cost }));
                 } catch (e) {
                     console.error("Image generation failed:", e);
-                    get().addToast('Image generation failed.', 'error');
+                    get().addToast(`Image generation failed: ${(e as Error).message}`, 'error');
                     const errorContent = 'Image generation failed.';
                     if (!isCharImage) { set(state => ({ gameState: { ...state.gameState, storyLog: state.gameState.storyLog.map(e => e.id === placeholderId ? { ...e, content: errorContent } : e) }})); }
                 }
@@ -371,7 +405,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
         get().addToast('Character portrait updated!', 'success');
     } catch (e) {
         console.error("Manual portrait generation failed:", e);
-        get().addToast('Portrait generation failed.', 'error');
+        get().addToast(`Portrait generation failed: ${(e as Error).message}`, 'error');
     } finally {
         set(state => ({ gameState: { ...state.gameState, isLoading: false }}));
     }
@@ -392,7 +426,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
         return suggestions;
     } catch (e) {
         console.error("Failed to get suggestions:", e);
-        get().addToast('Failed to get suggestions.', 'error');
+        get().addToast(`Failed to get suggestions: ${(e as Error).message}`, 'error');
         return [];
     } finally {
         set(state => ({ gameState: { ...state.gameState, isLoading: false }}));
@@ -438,7 +472,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
 
     } catch (e) {
         console.error("Failed to edit image:", e);
-        get().addToast("Image editing failed.", "error");
+        get().addToast(`Image editing failed: ${(e as Error).message}`, "error");
     } finally {
         set(state => ({ gameState: { ...state.gameState, isLoading: false }}));
     }
