@@ -15,26 +15,20 @@ import { ApiKeyModal } from './components/onboarding/ApiKeyModal';
 import { Spinner } from './components/ui/Spinner';
 
 const ThemeManager: React.FC = () => {
-  // FIX: Correctly select the active theme from the themes array based on the activeThemeName.
   const { themes, activeThemeName } = useStore((state) => state.settings);
   const theme = themes.find(t => t.name === activeThemeName);
 
   useEffect(() => {
-    // Guard clause: If for some reason the theme isn't found, do nothing to prevent a crash.
     if (!theme) return;
 
-    // Colors
     const root = document.documentElement;
     root.style.setProperty('--color-primary', theme.colors.primary);
     root.style.setProperty('--color-secondary', theme.colors.secondary);
     root.style.setProperty('--color-accent', theme.colors.accent);
     root.style.setProperty('--color-text', theme.colors.text);
     root.style.setProperty('--color-bg', theme.colors.bg);
-    
-    // Font size
     root.style.fontSize = `${theme.baseFontSize}px`;
 
-    // Background Image
     if (theme.backgroundImage) {
       document.body.style.backgroundImage = `url(${theme.backgroundImage})`;
       document.body.style.backgroundSize = 'cover';
@@ -44,13 +38,12 @@ const ThemeManager: React.FC = () => {
       document.body.style.backgroundImage = 'none';
     }
     
-    // Google Fonts
     const createFontLink = (fontFamily: string, id: string) => {
         const existingLink = document.getElementById(id);
         if (existingLink) {
             existingLink.remove();
         }
-        if (fontFamily !== 'Inter, sans-serif' && fontFamily !== 'Orbitron, sans-serif') { // Don't load system fonts
+        if (fontFamily !== 'Inter, sans-serif' && fontFamily !== 'Orbitron, sans-serif') {
             const link = document.createElement('link');
             link.id = id;
             link.rel = 'stylesheet';
@@ -118,15 +111,10 @@ const App: React.FC = () => {
       toggleCommandPalette: state.toggleCommandPalette,
   }));
 
-  // This effect runs only once on startup to validate the API key.
+  // This hook now has an empty dependency array to ensure it ONLY runs once.
   useEffect(() => {
-    if (apiKeyStatus === 'unvalidated') {
-      validateApiKey();
-    }
-  }, [apiKeyStatus, validateApiKey]); 
+    validateApiKey();
 
-  // This effect adds the command palette shortcut.
-  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === 'k') {
         e.preventDefault();
@@ -134,10 +122,11 @@ const App: React.FC = () => {
       }
     };
     window.addEventListener('keydown', handleKeyDown);
+    
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [toggleCommandPalette]);
+  }, []); // <-- The empty array is the critical fix.
 
   const renderContent = () => {
     switch (apiKeyStatus) {
@@ -154,7 +143,7 @@ const App: React.FC = () => {
       case 'valid':
         return <AppContent />;
       default:
-        return <div>Something went wrong.</div>;
+        return <div>An unexpected error occurred. Please refresh the page.</div>;
     }
   };
 
