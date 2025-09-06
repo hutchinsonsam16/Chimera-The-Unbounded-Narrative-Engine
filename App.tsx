@@ -3,7 +3,7 @@ import { OnboardingWizard } from './components/onboarding/OnboardingWizard';
 import { GameUI } from './components/game/GameUI';
 import { FullSettingsDialog } from './components/settings/FullSettingsDialog';
 import { useStore } from './hooks/useStore';
-import { GamePhase, GenerationService } from './types';
+import { GamePhase } from './types';
 import { ToastContainer } from './components/ui/Toast';
 import { DiceRoller } from './components/game/DiceRoller';
 import { AmbientAudioPlayer } from './components/game/AmbientAudioPlayer';
@@ -11,13 +11,11 @@ import { CommandPalette } from './components/ui/CommandPalette';
 import { ExportFormatModal } from './components/game/ExportFormatModal';
 import { ImageEditorModal } from './components/game/ImageEditorModal';
 import { InteractiveTutorial } from './components/game/InteractiveTutorial';
-import { ApiKeyModal } from './components/ApiKeyModal';
+import { ApiKeyModal } from './components/onboarding/ApiKeyModal';
 import { Spinner } from './components/ui/Spinner';
 
 const ThemeManager: React.FC = () => {
-  const themes = useStore((state) => state.settings.themes);
-  const activeTheme = useStore((state) => state.settings.activeThemeName);
-  const theme = themes.find(t => t.name === activeTheme) || themes[0];
+  const theme = useStore((state) => state.settings.theme);
 
   useEffect(() => {
     // Colors
@@ -108,21 +106,19 @@ const AppContent: React.FC = () => {
   );
 };
 
-
 const App: React.FC = () => {
-  const { apiKeyStatus, validateApiKey, toggleCommandPalette, service } = useStore(state => ({
+  const { apiKeyStatus, validateApiKey, toggleCommandPalette } = useStore(state => ({
       apiKeyStatus: state.apiKeyStatus,
       validateApiKey: state.validateApiKey,
       toggleCommandPalette: state.toggleCommandPalette,
-      service: state.settings.engine.service,
   }));
 
   // This effect runs only once on startup to validate the API key.
   useEffect(() => {
-    if (apiKeyStatus === 'unvalidated' && service === GenerationService.CLOUD) {
+    if (apiKeyStatus === 'unvalidated') {
       validateApiKey();
     }
-  }, []); // The empty array is critical to prevent an infinite loop.
+  }, [apiKeyStatus, validateApiKey]); 
 
   // This effect adds the command palette shortcut.
   useEffect(() => {
@@ -139,10 +135,6 @@ const App: React.FC = () => {
   }, [toggleCommandPalette]);
 
   const renderContent = () => {
-    if (service === GenerationService.LOCAL) {
-        return <AppContent />;
-    }
-
     switch (apiKeyStatus) {
       case 'unvalidated':
       case 'validating':
