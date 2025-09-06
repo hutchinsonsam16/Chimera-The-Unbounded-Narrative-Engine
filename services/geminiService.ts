@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { useStore } from '../hooks/useStore';
 
@@ -13,23 +12,28 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY! });
 
-export const generateText = async (prompt: string, systemInstruction: string): Promise<string> => {
-  const modelName = useStore.getState().settings.engine.cloud.textModel;
-  
-  try {
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: prompt,
-      config: {
-        systemInstruction,
-      },
-    });
-    return response.text;
-  } catch (error) {
-    console.error("Gemini text generation error:", error);
-    throw new Error("Failed to generate text from Gemini API.");
-  }
-};
+export async function* generateTextStream(prompt: string): AsyncGenerator<string> {
+    const state = useStore.getState();
+    const modelName = state.settings.engine.cloud.textModel;
+    const systemInstruction = state.settings.engine.cloud.systemPrompt;
+
+    try {
+        const response = await ai.models.generateContentStream({
+            model: modelName,
+            contents: prompt,
+            config: {
+                systemInstruction,
+            },
+        });
+
+        for await (const chunk of response) {
+            yield chunk.text;
+        }
+    } catch (error) {
+        console.error("Gemini streaming text generation error:", error);
+        throw new Error("Failed to generate streaming text from Gemini API.");
+    }
+}
 
 
 export const generateImage = async (prompt: string): Promise<string> => {

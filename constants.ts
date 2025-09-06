@@ -1,4 +1,4 @@
-import { Settings, GamePhase, GenerationService, LocalImageModelQuality, PanelType } from './types';
+import { Settings, GamePhase, GenerationService, LocalImageModelQuality, PanelType, GameData } from './types';
 
 // FIX: Converted template literal to a regular string to avoid parsing issues. The parser was incorrectly interpreting the string's content as code.
 export const DIRECTOR_SYSTEM_PROMPT = 'You are the Director, a master storyteller AI. Your role is to dynamically craft a rich, interactive narrative based on the provided game state and player actions.\n' +
@@ -39,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
     cloud: {
       textModel: 'gemini-2.5-flash',
       imageModel: 'imagen-4.0-generate-001',
+      systemPrompt: DIRECTOR_SYSTEM_PROMPT,
     },
   },
   layout: {
@@ -73,11 +74,12 @@ export const DEFAULT_SETTINGS: Settings = {
       body: 'Inter, sans-serif',
       heading: 'Orbitron, sans-serif',
     },
+    baseFontSize: 16,
     backgroundImage: '',
   },
 };
 
-export const INITIAL_STATE = {
+export const INITIAL_GAME_DATA: GameData = {
   character: {
     name: '',
     backstory: '',
@@ -97,6 +99,14 @@ export const INITIAL_STATE = {
     storyLog: [],
     timeline: [],
   },
+}
+
+export const INITIAL_STATE = {
+  ...INITIAL_GAME_DATA,
   settings: DEFAULT_SETTINGS,
   isSettingsOpen: false,
+  isDiceRollerOpen: false,
+  isAudioPlayerOpen: false,
+  audioUrl: '',
+  toasts: [],
 };
