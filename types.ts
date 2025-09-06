@@ -90,6 +90,12 @@ export interface Theme {
   backgroundImage?: string;
 }
 
+export interface Persona {
+    id: string;
+    name: string;
+    prompt: string;
+}
+
 export interface Settings {
   appName: string;
   engine: {
@@ -102,7 +108,8 @@ export interface Settings {
     cloud: {
       textModel: string;
       imageModel: string;
-      systemPrompt: string;
+      personas: Persona[];
+      activePersonaId: string | null;
     };
   };
   layout: {
@@ -111,6 +118,15 @@ export interface Settings {
   };
   gameplay: {
       promptAssist: boolean;
+      costs: {
+        textGeneration: number;
+        imageGeneration: number;
+        imageEdit: number;
+        suggestion: number;
+      }
+  };
+  performance: {
+      resourceLimit: number; // Percentage
   };
   componentVisibility: {
     character: {
@@ -129,6 +145,7 @@ export interface Settings {
     resourceMonitor: boolean;
   };
   theme: Theme;
+  hasCompletedTutorial: boolean;
 }
 
 export interface Toast {
@@ -150,23 +167,29 @@ export interface Snapshot {
     data: GameData;
 }
 
+export type ExportFormat = 'zip' | 'txt' | 'html';
+
 export interface AppState extends GameData {
   settings: Settings;
   snapshots: Snapshot[];
+  credits: number;
   isSettingsOpen: boolean;
   isDiceRollerOpen: boolean;
   isAudioPlayerOpen: boolean;
   isCommandPaletteOpen: boolean;
+  isExportModalOpen: boolean;
+  isImageEditorOpen: { open: boolean, logEntryId: string | null };
   audioUrl: string;
   toasts: Toast[];
   
   // Actions
   handlePlayerAction: (action: string) => Promise<void>;
   parseAndApplyTags: (rawResponse: string) => Promise<string>;
-  startGame: (worldConcept: string, charName: string, charBackstory: string, openingPrompt: string) => void;
+  // FIX: Added optional `charImageBase64` parameter to match the implementation, fixing a type error.
+  startGame: (worldConcept: string, charName: string, charBackstory: string, openingPrompt: string, charImageBase64?: string | null) => void;
   saveGame: () => void;
   loadGame: (file: File) => void;
-  exportGame: () => Promise<void>;
+  exportGame: (format: ExportFormat) => Promise<void>;
   exportCharacterSheet: () => void;
   restartGame: () => void;
   
@@ -175,6 +198,8 @@ export interface AppState extends GameData {
   toggleDiceRoller: () => void;
   toggleAudioPlayer: () => void;
   toggleCommandPalette: () => void;
+  toggleExportModal: () => void;
+  toggleImageEditor: (logEntryId?: string) => void;
   setAudioUrl: (url: string) => void;
   setPanelOrder: (order: PanelType[]) => void;
   setPanelSizes: (sizes: number[]) => void;
@@ -182,6 +207,16 @@ export interface AppState extends GameData {
   updateLogEntry: (id: string, newContent: string) => void;
   regenerateFrom: (id: string) => void;
   generateCharacterPortrait: () => Promise<void>;
+
+  // V3 Actions
+  suggestPlayerAction: () => Promise<string[]>;
+  editImage: (logEntryId: string, prompt: string, mode: 'in-paint' | 'out-paint', maskDataUrl?: string) => Promise<void>;
+  
+  // Persona Actions
+  addPersona: (persona: Omit<Persona, 'id'>) => void;
+  updatePersona: (persona: Persona) => void;
+  deletePersona: (id: string) => void;
+  setActivePersona: (id: string) => void;
 
   // Snapshot Actions
   createSnapshot: (name: string) => void;
@@ -192,6 +227,6 @@ export interface AppState extends GameData {
   addToast: (message: string, type?: Toast['type']) => void;
   removeToast: (id: string) => void;
 
-  // History Actions
-  // undo and redo are handled by zundo middleware and custom hooks
+  // Tutorial Actions
+  completeTutorial: () => void;
 }

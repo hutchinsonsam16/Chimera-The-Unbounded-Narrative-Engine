@@ -4,12 +4,73 @@ import { Dialog } from '../ui/Dialog';
 import { Tabs } from '../ui/Tabs';
 import { Button } from '../ui/Button';
 import { PanelOrderManager } from './PanelOrderManager';
-import { GenerationService, Theme } from '../../types';
+import { GenerationService, Theme, Persona } from '../../types';
 import { toBase64 } from '../../lib/utils';
 import { Input } from '../ui/Input';
 import { Textarea } from '../ui/Textarea';
 import { Tooltip } from '../ui/Tooltip';
 import { ModelSandbox } from './Sandbox';
+
+const PersonaManager: React.FC = () => {
+    const { personas, activePersonaId, addPersona, updatePersona, deletePersona, setActivePersona } = useStore(state => ({
+        personas: state.settings.engine.cloud.personas,
+        activePersonaId: state.settings.engine.cloud.activePersonaId,
+        addPersona: state.addPersona,
+        updatePersona: state.updatePersona,
+        deletePersona: state.deletePersona,
+        setActivePersona: state.setActivePersona,
+    }));
+    const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
+
+    const handleSave = () => {
+        if (editingPersona) {
+            if (personas.some(p => p.id === editingPersona.id)) {
+                updatePersona(editingPersona);
+            } else {
+                addPersona({ name: editingPersona.name, prompt: editingPersona.prompt });
+            }
+            setEditingPersona(null);
+        }
+    };
+    
+    return (
+        <div className="space-y-4">
+            {editingPersona ? (
+                 <div>
+                    <h4 className="font-semibold mb-2">{editingPersona.id ? 'Edit' : 'New'} Persona</h4>
+                    <Input label="Name" value={editingPersona.name} onChange={e => setEditingPersona({...editingPersona, name: e.target.value })} />
+                    <Textarea label="System Prompt" value={editingPersona.prompt} onChange={e => setEditingPersona({...editingPersona, prompt: e.target.value })} rows={10} className="mt-2" />
+                    <div className="flex space-x-2 mt-2">
+                        <Button onClick={handleSave}>Save</Button>
+                        <Button variant="secondary" onClick={() => setEditingPersona(null)}>Cancel</Button>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    <div className="flex justify-between items-center">
+                        <h4 className="font-semibold">Director Personas</h4>
+                        <Button size="sm" onClick={() => setEditingPersona({ id: '', name: 'New Persona', prompt: 'You are...' })}>Add New</Button>
+                    </div>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {personas.map(p => (
+                            <div key={p.id} className={`p-3 rounded-md flex justify-between items-center ${p.id === activePersonaId ? 'bg-sky-900/50 border border-sky-500' : 'bg-gray-700'}`}>
+                                <div>
+                                    <p className="font-semibold">{p.name}</p>
+                                    <p className="text-xs text-gray-400 truncate max-w-sm">{p.prompt}</p>
+                                </div>
+                                <div className="space-x-2 flex-shrink-0">
+                                    {p.id !== activePersonaId && <Button size="sm" onClick={() => setActivePersona(p.id)}>Activate</Button>}
+                                    <Button size="sm" variant="secondary" onClick={() => setEditingPersona(p)}>Edit</Button>
+                                    {personas.length > 1 && <Button size="sm" variant="danger" onClick={() => deletePersona(p.id)}>Delete</Button>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
 
 const EngineSettings: React.FC = () => {
     const settings = useStore(state => state.settings);
@@ -20,10 +81,6 @@ const EngineSettings: React.FC = () => {
     const handleServiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         setSettings({ ...settings, engine: { ...settings.engine, service: e.target.value as GenerationService }});
     };
-    
-    const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setSettings({ ...settings, engine: { ...settings.engine, cloud: { ...settings.engine.cloud, systemPrompt: e.target.value }}});
-    }
     
     // Mock download
     const handleDownloadModel = () => {
@@ -51,19 +108,11 @@ const EngineSettings: React.FC = () => {
                     {settings.engine.service === 'cloud' ? 'Uses powerful Google Gemini models. Requires API key.' : 'Runs smaller models directly in your browser. Slower, lower quality, but fully private.'}
                 </p>
             </div>
-
-            {settings.engine.service === 'cloud' && (
-                <div>
-                    <label className="block text-sm font-medium">Director System Prompt</label>
-                    <Textarea value={settings.engine.cloud.systemPrompt} onChange={handlePromptChange} rows={8} className="text-sm font-mono"/>
-                    <p className="text-xs text-gray-400 mt-1">Advanced: Modify the master instructions for the AI Director.</p>
-                </div>
-            )}
             
             {settings.engine.service === 'local' && (
                 <div className="p-4 border border-gray-600 rounded-md">
                     <h4 className="font-semibold mb-2">Local Model Hub</h4>
-                    <p className="text-sm text-gray-400 mb-3">Download models from Hugging Face to use locally.</p>
+                    <p className="text-sm text-gray-400 mb-3">Download models from Hugging Face to use locally. In a native app, these would save to `/models/`.</p>
                     <div className="flex space-x-2">
                         <Input value={modelUrl} onChange={e => setModelUrl(e.target.value)} placeholder="e.g., Xenova/phi-3-mini-4k-instruct"/>
                         <Button onClick={handleDownloadModel}>Download</Button>
@@ -78,6 +127,58 @@ const EngineSettings: React.FC = () => {
         </div>
     );
 };
+
+const GameplaySettings: React.FC = () => {
+    const { costs, setSettings, settings } = useStore(state => ({
+        costs: state.settings.gameplay.costs,
+        setSettings: state.setSettings,
+        settings: state.settings
+    }));
+
+    const handleCostChange = (key: keyof typeof costs, value: string) => {
+        const numValue = parseInt(value, 10);
+        if (!isNaN(numValue)) {
+            setSettings({ ...settings, gameplay: { ...settings.gameplay, costs: { ...costs, [key]: numValue } } });
+        }
+    };
+    
+    return (
+        <div className="space-y-4">
+            <h4 className="font-semibold">Action Costs</h4>
+            <p className="text-sm text-gray-400">Set the credit cost for various AI actions.</p>
+            <div className="grid grid-cols-2 gap-4">
+                <Input label="Text Generation Cost" type="number" value={costs.textGeneration} onChange={e => handleCostChange('textGeneration', e.target.value)} />
+                <Input label="Image Generation Cost" type="number" value={costs.imageGeneration} onChange={e => handleCostChange('imageGeneration', e.target.value)} />
+                <Input label="Image Edit Cost" type="number" value={costs.imageEdit} onChange={e => handleCostChange('imageEdit', e.target.value)} />
+                <Input label="Suggestion Cost" type="number" value={costs.suggestion} onChange={e => handleCostChange('suggestion', e.target.value)} />
+            </div>
+        </div>
+    );
+};
+
+const PerformanceSettings: React.FC = () => {
+     const { resourceLimit, setSettings, settings } = useStore(state => ({
+        resourceLimit: state.settings.performance.resourceLimit,
+        setSettings: state.setSettings,
+        settings: state.settings
+    }));
+
+    const handleLimitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setSettings({ ...settings, performance: { ...settings.performance, resourceLimit: parseInt(e.target.value, 10) }});
+    }
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <label htmlFor="resourceLimit" className="block text-sm font-medium text-gray-300">System Resource Limit: {resourceLimit}%</label>
+                <input type="range" id="resourceLimit" min="25" max="100" step="5" value={resourceLimit} onChange={handleLimitChange} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"/>
+                <p className="text-xs text-gray-400 mt-1">
+                    (Note: In a web environment, this is a mock setting. In a native app, this would control CPU/RAM allocation for local models.)
+                </p>
+            </div>
+        </div>
+    )
+}
 
 const StyleSettings: React.FC = () => {
     const theme = useStore(state => state.settings.theme);
@@ -181,7 +282,10 @@ export const FullSettingsDialog: React.FC<FullSettingsDialogProps> = ({ onClose 
 
   const tabs = [
     { label: 'Engine', content: <EngineSettings /> },
+    { label: 'Personas', content: <PersonaManager /> },
     { label: 'Sandbox', content: <ModelSandbox /> },
+    { label: 'Gameplay', content: <GameplaySettings /> },
+    { label: 'Performance', content: <PerformanceSettings /> },
     { label: 'Layout', content: <LayoutSettings /> },
     { label: 'Style', content: <StyleSettings /> },
     { label: 'Data', content: <DangerZone onClose={onClose} /> },

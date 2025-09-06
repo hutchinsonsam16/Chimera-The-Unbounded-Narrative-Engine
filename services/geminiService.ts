@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { useStore } from '../hooks/useStore';
 
 // The API key is injected via environment variables.
@@ -15,7 +15,9 @@ const ai = new GoogleGenAI({ apiKey: API_KEY! });
 export async function* generateTextStream(prompt: string): AsyncGenerator<string> {
     const state = useStore.getState();
     const modelName = state.settings.engine.cloud.textModel;
-    const systemInstruction = state.settings.engine.cloud.systemPrompt;
+    
+    const activePersona = state.settings.engine.cloud.personas.find(p => p.id === state.settings.engine.cloud.activePersonaId);
+    const systemInstruction = activePersona ? activePersona.prompt : "You are a helpful AI assistant.";
 
     try {
         const response = await ai.models.generateContentStream({
@@ -50,7 +52,6 @@ export async function generateEnhancedPrompt(prompt: string): Promise<string> {
     }
 }
 
-
 export const generateImage = async (prompt: string): Promise<string> => {
   const modelName = useStore.getState().settings.engine.cloud.imageModel;
   
@@ -75,3 +76,110 @@ export const generateImage = async (prompt: string): Promise<string> => {
     throw new Error("Failed to generate image from Gemini API.");
   }
 };
+
+
+export const suggestActionFromContext = async (context: string): Promise<string[]> => {
+    const modelName = useStore.getState().settings.engine.cloud.textModel;
+    const prompt = `Given the following game context, suggest 1-3 creative and relevant actions or lines of dialogue for the player character. The suggestions should be in the character's voice.\n\nCONTEXT:\n${context}\n\nSUGGESTIONS:`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        suggestions: {
+                            type: Type.ARRAY,
+                            items: { type: Type.STRING }
+                        }
+                    }
+                }
+            }
+        });
+        const json = JSON.parse(response.text);
+        return json.suggestions || [];
+    } catch (error) {
+        console.error("Gemini action suggestion error:", error);
+        throw new Error("Failed to get suggestions from Gemini API.");
+    }
+};
+
+export const editImageWithMask = async (prompt: string, imageBase64: string, maskBase64?: string): Promise<{image: string, text: string}> => {
+    // This model is specifically for image editing tasks
+    const modelName = 'gemini-2.5-flash-image-preview';
+
+    const imagePart = { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } };
+    const textPart = { text: prompt };
+    
+    const parts = [imagePart, textPart];
+    // Inpainting requires a mask
+    if (maskBase64) {
+        const maskPart = { inlineData: { mimeType: 'image/png', data: maskBase64 }};
+        parts.splice(1, 0, maskPart); // Insert mask between image and prompt
+    }
+
+    try {
+        const response = await ai.models.generateContent({
+            model: modelName,
+            contents: { parts },
+            config: {
+                responseModalities: [Modality.IMAGE, Modality.TEXT],
+            },
+        });
+
+        let newImageBase64 = '';
+        let newText = '';
+
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                newImageBase64 = part.inlineData.data;
+            } else if (part.text) {
+                newText = part.text;
+            }
+        }
+        
+        if (!newImageBase64) {
+            throw new Error("Image editing API did not return an image.");
+        }
+
+        return { image: newImageBase64, text: newText };
+    } catch(e) {
+        console.error("Gemini image editing error:", e);
+        throw new Error("Failed to edit image with Gemini API.");
+    }
+};
+
+
+export const generateOnboardingFromImage = async (imageBase64: string): Promise<{name: string, backstory: string, openingPrompt: string}> => {
+    const modelName = useStore.getState().settings.engine.cloud.textModel;
+
+    const imagePart = { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } };
+    const textPart = { text: "Analyze this character portrait. Based on their appearance, invent a creative character name, a short, compelling backstory (2-3 sentences), and an exciting opening story prompt for a fantasy RPG." };
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: modelName,
+            contents: { parts: [imagePart, textPart] },
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        name: { type: Type.STRING },
+                        backstory: { type: Type.STRING },
+                        openingPrompt: { type: Type.STRING }
+                    }
+                }
+            }
+        });
+
+        return JSON.parse(response.text);
+
+    } catch (e) {
+        console.error("Gemini onboarding generation error:", e);
+        throw new Error("Failed to generate character from image.");
+    }
+}

@@ -1,8 +1,8 @@
 import type { StateCreator } from 'zustand';
 import { temporal } from 'zundo';
-import { AppState, GamePhase, NPC, PanelType, Settings, StoryLogEntry, GameData, Toast, Quest, KnowledgeBaseEntry, Snapshot } from '../types';
+import { AppState, GamePhase, NPC, PanelType, Settings, StoryLogEntry, GameData, Toast, Quest, KnowledgeBaseEntry, Snapshot, Persona, ExportFormat } from '../types';
 import { INITIAL_STATE, INITIAL_GAME_DATA } from '../constants';
-import { generateTextStream, generateImage, generateEnhancedPrompt } from '../services/geminiService';
+import { generateTextStream, generateImage, generateEnhancedPrompt, suggestActionFromContext, editImageWithMask, generateOnboardingFromImage } from '../services/geminiService';
 import { generateLocalText, generateLocalImage } from '../services/localGenerationService';
 import { nanoid } from 'nanoid';
 import JSZip from 'jszip';
@@ -19,6 +19,8 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
   toggleDiceRoller: () => set(state => ({ isDiceRollerOpen: !state.isDiceRollerOpen })),
   toggleAudioPlayer: () => set(state => ({ isAudioPlayerOpen: !state.isAudioPlayerOpen })),
   toggleCommandPalette: () => set(state => ({ isCommandPaletteOpen: !state.isCommandPaletteOpen })),
+  toggleExportModal: () => set(state => ({ isExportModalOpen: !state.isExportModalOpen })),
+  toggleImageEditor: (logEntryId) => set(state => ({ isImageEditorOpen: { open: !state.isImageEditorOpen.open, logEntryId: logEntryId || null }})),
   setAudioUrl: (url: string) => set({ audioUrl: url }),
 
   setPanelOrder: (order: PanelType[]) => set((state) => ({ settings: { ...state.settings, layout: { ...state.settings.layout, panelOrder: order } } })),
@@ -40,13 +42,24 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
     clear();
   },
 
-  startGame: (worldConcept, charName, charBackstory, openingPrompt) => {
+  // FIX: Added explicit types to parameters to align with the updated AppState interface.
+  startGame: async (worldConcept: string, charName: string, charBackstory: string, openingPrompt: string, charImageBase64?: string | null) => {
+    let initialImageUrl = `https://picsum.photos/seed/char/512/512`;
+    let initialHistory: { url: string; prompt: string }[] = [];
+
+    if (charImageBase64) {
+      initialImageUrl = `data:image/jpeg;base64,${charImageBase64}`;
+      initialHistory.push({ url: initialImageUrl, prompt: "Initial character image." });
+    }
+
     set({
       ...INITIAL_GAME_DATA,
       character: {
         ...INITIAL_GAME_DATA.character,
         name: charName,
         backstory: charBackstory,
+        imageUrl: initialImageUrl,
+        imageUrlHistory: initialHistory,
       },
       world: {
         ...INITIAL_GAME_DATA.world,
@@ -60,11 +73,23 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
         ],
       },
     });
+
+    if (!charImageBase64) {
+      // Generate initial portrait if none was provided
+      await get().generateCharacterPortrait();
+    }
+    
     get().handlePlayerAction(openingPrompt);
   },
 
   handlePlayerAction: async (action: string) => {
     if (get().gameState.isLoading) return;
+    
+    const cost = get().settings.gameplay.costs.textGeneration;
+    if (get().credits < cost) {
+        get().addToast(`Not enough credits. Need ${cost}, have ${get().credits}.`, 'error');
+        return;
+    }
 
     let finalAction = action;
     const { settings } = get();
@@ -133,6 +158,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
           }));
         }
       }
+      set(state => ({ credits: state.credits - cost }));
     } catch (error) {
       console.error("Error generating response:", error);
       get().addToast("Error: Could not get a response from the AI.", 'error');
@@ -201,10 +227,12 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
             if (attributes.id && attributes.prompt) {
                 const { id: npcId, prompt: npcPrompt } = attributes;
                 const promise = (async () => {
+                    const cost = get().settings.gameplay.costs.imageGeneration;
+                    if (get().credits < cost) return;
                     try {
                         const b64Image = await generateImage(npcPrompt);
                         const imageUrl = `data:image/jpeg;base64,${b64Image}`;
-                        set(state => ({ world: { ...state.world, npcs: state.world.npcs.map(npc => npc.id === npcId ? { ...npc, imageUrl, imageUrlHistory: [...(npc.imageUrlHistory || []), { url: imageUrl, prompt: npcPrompt }] } : npc ) }}));
+                        set(state => ({ world: { ...state.world, npcs: state.world.npcs.map(npc => npc.id === npcId ? { ...npc, imageUrl, imageUrlHistory: [...(npc.imageUrlHistory || []), { url: imageUrl, prompt: npcPrompt }] } : npc ) }, credits: state.credits - cost }));
                     } catch (e) { console.error(`Failed to generate image for NPC ${npcId}:`, e); get().addToast(`Image generation failed for NPC.`, 'error'); }
                 })();
                 imagePromises.push(promise);
@@ -217,12 +245,20 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
             const placeholderEntry: StoryLogEntry = { id: placeholderId, type: 'image', content: 'generating...', prompt: imagePrompt, timestamp: new Date().toISOString() };
             if (!isCharImage) { set(state => ({ gameState: { ...state.gameState, storyLog: [...state.gameState.storyLog, placeholderEntry] }})); }
             const promise = (async () => {
+                const cost = get().settings.gameplay.costs.imageGeneration;
+                if (get().credits < cost) {
+                    const errorContent = 'Image generation failed: Not enough credits.';
+                    if (!isCharImage) { set(state => ({ gameState: { ...state.gameState, storyLog: state.gameState.storyLog.map(e => e.id === placeholderId ? { ...e, content: errorContent } : e) }})); }
+                    return;
+                }
+
                 try {
                     const { service } = get().settings.engine;
                     const b64Image = service === 'cloud' ? await generateImage(imagePrompt) : await generateLocalImage(imagePrompt);
                     const imageUrl = `data:image/jpeg;base64,${b64Image}`;
                     if (isCharImage) { set(state => ({ character: { ...state.character, imageUrl, imageUrlHistory: [...state.character.imageUrlHistory, { url: imageUrl, prompt: imagePrompt }] }})); } 
                     else { set(state => ({ gameState: { ...state.gameState, storyLog: state.gameState.storyLog.map(e => e.id === placeholderId ? { ...e, content: imageUrl } : e) }})); }
+                    set(state => ({ credits: state.credits - cost }));
                 } catch (e) {
                     console.error("Image generation failed:", e);
                     get().addToast('Image generation failed.', 'error');
@@ -236,16 +272,7 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
     }
     await Promise.all(imagePromises);
     if(significantChange && get().settings.engine.service === 'cloud'){
-        const { character } = get();
-        const autoPrompt = `Full body portrait of ${character.name}, a character whose status is ${JSON.stringify(character.status)}. They are carrying: ${character.inventory.join(', ')}.`;
-         const promise = (async () => {
-            try {
-                const b64Image = await generateImage(autoPrompt);
-                const imageUrl = `data:image/jpeg;base64,${b64Image}`;
-                set(state => ({ character: { ...state.character, imageUrl, imageUrlHistory: [...state.character.imageUrlHistory, { url: imageUrl, prompt: autoPrompt }] }}));
-                get().addToast('Character portrait updated due to state change.', 'info');
-            } catch (e) { console.error("Auto-portrait generation failed:", e); }
-        })();
+        const promise = get().generateCharacterPortrait();
         imagePromises.push(promise);
     }
     
@@ -280,6 +307,13 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
   
   generateCharacterPortrait: async () => {
     if (get().gameState.isLoading) return;
+
+    const cost = get().settings.gameplay.costs.imageGeneration;
+    if (get().credits < cost) {
+        get().addToast(`Not enough credits for portrait. Need ${cost}.`, 'error');
+        return;
+    }
+
     set(state => ({ gameState: { ...state.gameState, isLoading: true }}));
     get().addToast('Generating new character portrait...', 'info');
 
@@ -298,7 +332,8 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
                 ...state.character, 
                 imageUrl, 
                 imageUrlHistory: [...state.character.imageUrlHistory, { url: imageUrl, prompt: autoPrompt }] 
-            }
+            },
+            credits: state.credits - cost,
         }));
         get().addToast('Character portrait updated!', 'success');
     } catch (e) {
@@ -307,6 +342,106 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
     } finally {
         set(state => ({ gameState: { ...state.gameState, isLoading: false }}));
     }
+  },
+
+  suggestPlayerAction: async () => {
+    const cost = get().settings.gameplay.costs.suggestion;
+    if (get().credits < cost) {
+        get().addToast(`Not enough credits for suggestion. Need ${cost}.`, 'error');
+        return [];
+    }
+    set(state => ({ gameState: { ...state.gameState, isLoading: true }}));
+    try {
+        const { character, gameState } = get();
+        const context = `Character: ${JSON.stringify(character)}\n\nRecent Events:\n${gameState.storyLog.slice(-5).map(e => e.content).join('\n---\n')}`;
+        const suggestions = await suggestActionFromContext(context);
+        set(state => ({ credits: state.credits - cost }));
+        return suggestions;
+    } catch (e) {
+        console.error("Failed to get suggestions:", e);
+        get().addToast('Failed to get suggestions.', 'error');
+        return [];
+    } finally {
+        set(state => ({ gameState: { ...state.gameState, isLoading: false }}));
+    }
+  },
+
+  editImage: async (logEntryId, prompt, mode, maskDataUrl) => {
+    const cost = get().settings.gameplay.costs.imageEdit;
+    if (get().credits < cost) {
+        get().addToast(`Not enough credits for image edit. Need ${cost}.`, 'error');
+        return;
+    }
+
+    const originalEntry = get().gameState.storyLog.find(e => e.id === logEntryId);
+    if (!originalEntry || originalEntry.type !== 'image' || !originalEntry.content.startsWith('data:')) {
+        get().addToast('Original image not found or invalid.', 'error');
+        return;
+    }
+    set(state => ({ gameState: { ...state.gameState, isLoading: true }}));
+    try {
+        const originalImageBase64 = originalEntry.content.split(',')[1];
+        const maskBase64 = maskDataUrl ? maskDataUrl.split(',')[1] : undefined;
+
+        const { image: newImageBase64, text: newText } = await editImageWithMask(prompt, originalImageBase64, maskBase64);
+        
+        const newImageUrl = `data:image/jpeg;base64,${newImageBase64}`;
+        const newLogEntry: StoryLogEntry = {
+            id: nanoid(),
+            type: 'image',
+            content: newImageUrl,
+            prompt: `(Edit of: ${originalEntry.prompt}) ${prompt}`,
+            timestamp: new Date().toISOString()
+        };
+
+        set(state => ({
+            gameState: {
+                ...state.gameState,
+                storyLog: [...state.gameState.storyLog, newLogEntry]
+            },
+            credits: state.credits - cost,
+        }));
+        get().addToast("Image successfully edited!", 'success');
+
+    } catch (e) {
+        console.error("Failed to edit image:", e);
+        get().addToast("Image editing failed.", "error");
+    } finally {
+        set(state => ({ gameState: { ...state.gameState, isLoading: false }}));
+    }
+  },
+
+  addPersona: (personaData) => {
+      const newPersona: Persona = { ...personaData, id: nanoid() };
+      set(state => ({
+          settings: { ...state.settings, engine: { ...state.settings.engine, cloud: { ...state.settings.engine.cloud, personas: [...state.settings.engine.cloud.personas, newPersona] }}}
+      }));
+  },
+  updatePersona: (personaToUpdate) => {
+      set(state => ({
+          settings: { ...state.settings, engine: { ...state.settings.engine, cloud: { ...state.settings.engine.cloud, personas: state.settings.engine.cloud.personas.map(p => p.id === personaToUpdate.id ? personaToUpdate : p) }}}
+      }));
+  },
+  deletePersona: (id) => {
+      set(state => {
+          const newPersonas = state.settings.engine.cloud.personas.filter(p => p.id !== id);
+          let newActiveId = state.settings.engine.cloud.activePersonaId;
+          if (newActiveId === id) {
+              newActiveId = newPersonas.length > 0 ? newPersonas[0].id : null;
+          }
+          return {
+              settings: { ...state.settings, engine: { ...state.settings.engine, cloud: { ...state.settings.engine.cloud, personas: newPersonas, activePersonaId: newActiveId }}}
+          }
+      })
+  },
+  setActivePersona: (id) => {
+      set(state => ({
+          settings: { ...state.settings, engine: { ...state.settings.engine, cloud: { ...state.settings.engine.cloud, activePersonaId: id }}}
+      }));
+  },
+  
+  completeTutorial: () => {
+      set(state => ({ settings: { ...state.settings, hasCompletedTutorial: true }}));
   },
 
   createSnapshot: (name) => {
@@ -340,8 +475,8 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
   },
 
   saveGame: () => {
-    const { character, world, gameState, snapshots } = get();
-    const saveState = { version: '2.0.0', savedAt: new Date().toISOString(), character, world, gameState: { ...gameState, isLoading: false }, snapshots };
+    const { character, world, gameState, snapshots, settings, credits } = get();
+    const saveState = { version: '3.0.0', savedAt: new Date().toISOString(), character, world, gameState: { ...gameState, isLoading: false }, snapshots, settings, credits };
     const blob = new Blob([JSON.stringify(saveState, null, 2)], { type: 'application/json' });
     FileSaver.saveAs(blob, `chimera-save-${Date.now()}.json`);
     get().addToast("Game Saved!", "success");
@@ -353,7 +488,14 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
       try {
         const savedData = JSON.parse(event.target?.result as string);
         if (savedData.version && savedData.character && savedData.world && savedData.gameState) {
-            set({ character: savedData.character, world: savedData.world, gameState: { ...savedData.gameState, phase: GamePhase.PLAYING }, snapshots: savedData.snapshots || [] });
+            set({ 
+                character: savedData.character, 
+                world: savedData.world, 
+                gameState: { ...savedData.gameState, phase: GamePhase.PLAYING }, 
+                snapshots: savedData.snapshots || [],
+                settings: savedData.settings || get().settings, // Keep existing settings if not in save
+                credits: savedData.credits || 100,
+            });
             get().addToast("Game Loaded Successfully!", "success");
         } else { throw new Error("Invalid save file format."); }
       } catch (e) {
@@ -405,12 +547,55 @@ const historySlice: StateCreator<AppState, [], [], AppState> = (set, get) => ({
     }
   },
 
-  exportGame: async () => {
+  exportGame: async (format: ExportFormat) => {
     set(state => ({ gameState: { ...state.gameState, isLoading: true }}));
+    get().toggleExportModal(); // Close the modal
+
     try {
         const { character, world, gameState, settings } = get();
+
+        if (format === 'txt') {
+            const textContent = gameState.storyLog.map(entry => {
+                if (entry.type === 'narrative' || entry.type === 'player') return `[${entry.type.toUpperCase()}]\n${entry.content}`;
+                if (entry.type === 'system') return `--- ${entry.content} ---`;
+                if (entry.type === 'image') return `[IMAGE: ${entry.prompt}]`;
+                return '';
+            }).join('\n\n');
+            const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+            FileSaver.saveAs(blob, 'story.txt');
+            get().addToast("Saga exported as TXT!", "success");
+            return;
+        }
+
+        if (format === 'html') {
+             const storyHtml = gameState.storyLog.map(entry => {
+                switch(entry.type) {
+                    case 'player': return `<p class="player"><strong>You:</strong> <em>${entry.content}</em></p>`;
+                    case 'narrative': return `<p class="narrative">${entry.content.replace(/\n/g, '<br>')}</p>`;
+                    case 'image': return `<div class="image-container"><p class="prompt">Prompt: ${entry.prompt}</p><img src="${entry.content}" alt="${entry.prompt}"></div>`;
+                    case 'system': return `<p class="system">--- ${entry.content} ---</p>`;
+                    default: return '';
+                }
+            }).join('');
+
+            const htmlContent = `
+                <!DOCTYPE html><html><head><title>${character.name}'s Saga</title>
+                <style>
+                    body { font-family: sans-serif; line-height: 1.6; max-width: 800px; margin: auto; padding: 2rem; background: #121212; color: #eee; }
+                    h1 { color: #58a6ff; } .player { text-align: right; color: #9ecbff; } .narrative { color: #c9d1d9; }
+                    .system { text-align: center; color: #8b949e; } .image-container { margin: 2rem 0; text-align: center; }
+                    img { max-width: 100%; border-radius: 8px; } .prompt { font-size: 0.8rem; color: #8b949e; }
+                </style>
+                </head><body><h1>${character.name}'s Saga</h1>${storyHtml}</body></html>`;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            FileSaver.saveAs(blob, 'story.html');
+            get().addToast("Saga exported as HTML!", "success");
+            return;
+        }
+
+        // Default to ZIP
         const zip = new JSZip();
-        zip.file('save.json', JSON.stringify({ version: '2.0.0', character, world, gameState, settings }, null, 2));
+        zip.file('save.json', JSON.stringify({ version: '3.0.0', character, world, gameState, settings }, null, 2));
 
         const imagePrompts: string[] = [];
         const imageFolder = zip.folder('images');

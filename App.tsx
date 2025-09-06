@@ -8,6 +8,9 @@ import { ToastContainer } from './components/ui/Toast';
 import { DiceRoller } from './components/game/DiceRoller';
 import { AmbientAudioPlayer } from './components/game/AmbientAudioPlayer';
 import { CommandPalette } from './components/ui/CommandPalette';
+import { ExportFormatModal } from './components/game/ExportFormatModal';
+import { ImageEditorModal } from './components/game/ImageEditorModal';
+import { InteractiveTutorial } from './components/game/InteractiveTutorial';
 
 const ThemeManager: React.FC = () => {
   const theme = useStore((state) => state.settings.theme);
@@ -60,16 +63,27 @@ const ThemeManager: React.FC = () => {
 };
 
 const App: React.FC = () => {
-  const gamePhase = useStore((state) => state.gameState.phase);
-  const isSettingsOpen = useStore((state) => state.isSettingsOpen);
-  const isDiceRollerOpen = useStore((state) => state.isDiceRollerOpen);
-  const isAudioPlayerOpen = useStore((state) => state.isAudioPlayerOpen);
-  const toggleSettings = useStore((state) => state.toggleSettings);
-  const toggleCommandPalette = useStore(state => state.toggleCommandPalette);
-  const isCommandPaletteOpen = useStore(state => state.isCommandPaletteOpen);
-  const healthStatus = useStore(state => state.character.status.Health);
+  const { 
+    gamePhase, isSettingsOpen, isDiceRollerOpen, 
+    isAudioPlayerOpen, toggleSettings, toggleCommandPalette, 
+    isCommandPaletteOpen, healthStatus, isExportModalOpen, 
+    isImageEditorOpen, hasCompletedTutorial 
+  } = useStore(state => ({
+    gamePhase: state.gameState.phase,
+    isSettingsOpen: state.isSettingsOpen,
+    isDiceRollerOpen: state.isDiceRollerOpen,
+    isAudioPlayerOpen: state.isAudioPlayerOpen,
+    toggleSettings: state.toggleSettings,
+    toggleCommandPalette: state.toggleCommandPalette,
+    isCommandPaletteOpen: state.isCommandPaletteOpen,
+    healthStatus: state.character.status.Health,
+    isExportModalOpen: state.isExportModalOpen,
+    isImageEditorOpen: state.isImageEditorOpen,
+    hasCompletedTutorial: state.settings.hasCompletedTutorial,
+  }));
 
   const isWounded = healthStatus?.toLowerCase().includes('wounded') || healthStatus?.toLowerCase().includes('injured');
+  const showTutorial = gamePhase === GamePhase.PLAYING && !hasCompletedTutorial;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -94,8 +108,11 @@ const App: React.FC = () => {
         {gamePhase === GamePhase.PLAYING && <GameUI />}
         {isSettingsOpen && <FullSettingsDialog onClose={toggleSettings} />}
         {isCommandPaletteOpen && <CommandPalette />}
+        {isExportModalOpen && <ExportFormatModal />}
+        {isImageEditorOpen.open && <ImageEditorModal logEntryId={isImageEditorOpen.logEntryId!} />}
         {isDiceRollerOpen && <DiceRoller />}
         {isAudioPlayerOpen && <AmbientAudioPlayer />}
+        {showTutorial && <InteractiveTutorial />}
       </div>
        <style>{`
             .low-health-effect {

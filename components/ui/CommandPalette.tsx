@@ -18,7 +18,7 @@ export const CommandPalette: React.FC = () => {
         toggleCommandPalette,
         toggleSettings,
         saveGame,
-        exportGame,
+        toggleExportModal,
         toggleDiceRoller,
         toggleAudioPlayer,
         restartGame,
@@ -27,7 +27,8 @@ export const CommandPalette: React.FC = () => {
         toggleCommandPalette: state.toggleCommandPalette,
         toggleSettings: state.toggleSettings,
         saveGame: state.saveGame,
-        exportGame: state.exportGame,
+        // FIX: Replaced `exportGame` with `toggleExportModal` to match the expected action type and UI flow.
+        toggleExportModal: state.toggleExportModal,
         toggleDiceRoller: state.toggleDiceRoller,
         toggleAudioPlayer: state.toggleAudioPlayer,
         restartGame: state.restartGame,
@@ -39,7 +40,8 @@ export const CommandPalette: React.FC = () => {
         { id: 'dice', name: 'Toggle Dice Roller', section: 'General', action: toggleDiceRoller },
         { id: 'audio', name: 'Toggle Audio Player', section: 'General', action: toggleAudioPlayer },
         { id: 'save', name: 'Save Game', section: 'Game', action: saveGame, keywords: 'save' },
-        { id: 'export', name: 'Export Saga', section: 'Game', action: exportGame, keywords: 'zip archive' },
+        // FIX: Changed action to `toggleExportModal` which has the correct `() => void` signature.
+        { id: 'export', name: 'Export Saga', section: 'Game', action: toggleExportModal, keywords: 'zip archive' },
         { id: 'sheet', name: 'Export Character Sheet', section: 'Game', action: exportCharacterSheet, keywords: 'pdf' },
         { id: 'restart', name: 'Restart Game', section: 'Game', action: () => { if (window.confirm("Are you sure?")) restartGame(); }, keywords: 'new danger' },
     ], []);

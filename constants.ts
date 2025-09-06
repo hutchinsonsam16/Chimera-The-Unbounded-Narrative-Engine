@@ -1,4 +1,5 @@
-import { Settings, GamePhase, GenerationService, LocalImageModelQuality, PanelType, GameData } from './types';
+import { Settings, GamePhase, GenerationService, LocalImageModelQuality, PanelType, GameData, Persona } from './types';
+import { nanoid } from 'nanoid';
 
 // FIX: Converted template literal to a regular string to avoid parsing issues. The parser was incorrectly interpreting the string's content as code.
 export const DIRECTOR_SYSTEM_PROMPT = 'You are the Director, a master storyteller AI. Your role is to dynamically craft a rich, interactive narrative based on the provided game state and player actions.\n' +
@@ -32,6 +33,12 @@ export const LOCAL_DIRECTOR_PROMPT_PREFIX = 'You are a storyteller. Given the co
 
 export const APP_NAME = "Chimera";
 
+const defaultPersonaId = nanoid();
+const defaultPersonas: Persona[] = [
+    { id: defaultPersonaId, name: 'Default Director', prompt: DIRECTOR_SYSTEM_PROMPT },
+    { id: nanoid(), name: 'Concise Director', prompt: DIRECTOR_SYSTEM_PROMPT.replace('vividly', 'concisely in 1-2 paragraphs') }
+];
+
 export const DEFAULT_SETTINGS: Settings = {
   appName: APP_NAME,
   engine: {
@@ -44,7 +51,8 @@ export const DEFAULT_SETTINGS: Settings = {
     cloud: {
       textModel: 'gemini-2.5-flash',
       imageModel: 'imagen-4.0-generate-001',
-      systemPrompt: DIRECTOR_SYSTEM_PROMPT,
+      personas: defaultPersonas,
+      activePersonaId: defaultPersonaId,
     },
   },
   layout: {
@@ -53,6 +61,15 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   gameplay: {
       promptAssist: false,
+      costs: {
+        textGeneration: 1,
+        imageGeneration: 5,
+        imageEdit: 3,
+        suggestion: 1,
+      }
+  },
+  performance: {
+      resourceLimit: 75,
   },
   componentVisibility: {
     character: {
@@ -86,6 +103,7 @@ export const DEFAULT_SETTINGS: Settings = {
     baseFontSize: 16,
     backgroundImage: '',
   },
+  hasCompletedTutorial: false,
 };
 
 export const INITIAL_GAME_DATA: GameData = {
@@ -116,10 +134,13 @@ export const INITIAL_STATE = {
   ...INITIAL_GAME_DATA,
   settings: DEFAULT_SETTINGS,
   snapshots: [],
+  credits: 100,
   isSettingsOpen: false,
   isDiceRollerOpen: false,
   isAudioPlayerOpen: false,
   isCommandPaletteOpen: false,
+  isExportModalOpen: false,
+  isImageEditorOpen: { open: false, logEntryId: null },
   audioUrl: '',
   toasts: [],
 };
